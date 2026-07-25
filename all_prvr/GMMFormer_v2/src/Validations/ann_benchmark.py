@@ -86,7 +86,26 @@ def _resolve_ivf_nlist(requested_nlist, corpus_size):
     return min(1 << exponent, int(corpus_size))
 
 
-def _faiss_index(faiss, vectors, index_type, nlist, nprobe, ef_search):
+def _branch_option(args, branch, name):
+    """Use a branch override when supplied, otherwise retain legacy defaults."""
+    branch_value = int(getattr(args, f'ann_{branch}_{name}'))
+    return int(getattr(args, f'ann_{name}')) if branch_value < 0 else branch_value
+
+
+def _ivf_settings(args, branch, raw_corpus_size):
+    requested_nlist = _branch_option(args, branch, 'nlist')
+    requested_nprobe = _branch_option(args, branch, 'nprobe')
+    nlist = _resolve_ivf_nlist(requested_nlist, raw_corpus_size)
+    return nlist, min(requested_nprobe, nlist)
+
+
+def _hnsw_ef_search(args, branch, raw_k):
+    requested = _branch_option(args, branch, 'ef_search')
+    # Returning k valid raw candidates requires efSearch >= k.
+    return max(requested, int(raw_k))
+
+
+def _faiss_index(faiss, vectors, index_type, nlist, nprobe, hnsw_m, hnsw_ef_construction):
     """Build a serializable FAISS CPU index; IVF may later be cloned to GPU."""
     d = vectors.shape[-1]
     xb = vectors.reshape(-1, d).detach().float().cpu().numpy()
@@ -105,15 +124,14 @@ def _faiss_index(faiss, vectors, index_type, nlist, nprobe, ef_search):
         index.nprobe = min(int(nprobe), nlist)
         return index
     if index_type == 'hnsw':
-        index = faiss.IndexHNSWFlat(d, 128, faiss.METRIC_INNER_PRODUCT)
-        index.hnsw.efConstruction = max(40, int(ef_search))
-        index.hnsw.efSearch = int(ef_search)
+        index = faiss.IndexHNSWFlat(d, int(hnsw_m), faiss.METRIC_INNER_PRODUCT)
+        index.hnsw.efConstruction = max(40, int(hnsw_ef_construction))
         index.add(xb)
         return index
     raise ValueError(f'unsupported ANN index: {index_type}')
 
 
-def _index_paths(cfg, checkpoint, args, bank_path):
+def _index_paths(cfg, checkpoint, args, bank_path, num_videos):
     """Stable filenames prevent rebuilding an index for the same context bank.
 
     The bank is an encoded model output, not merely an alias for a checkpoint
@@ -126,17 +144,21 @@ def _index_paths(cfg, checkpoint, args, bank_path):
     stat = Path(bank_path).stat()
     bank_token = hashlib.sha1(f'{Path(bank_path).resolve()}:{stat.st_size}:{stat.st_mtime_ns}'.encode()).hexdigest()[:12]
     if args.ann_index in ('ivf', 'ivf-gpu'):
-        nlist_spec = f'nlist{args.ann_nlist}' if args.ann_nlist else 'nlistauto_sqrtpow2'
-        spec = f'{args.ann_index}_{nlist_spec}'
+        clip_nlist, _ = _ivf_settings(args, 'clip', num_videos * 32)
+        frame_nlist, _ = _ivf_settings(args, 'frame', num_videos * 128)
+        clip_spec = f'{args.ann_index}_nlist{clip_nlist}'
+        frame_spec = f'{args.ann_index}_nlist{frame_nlist}'
     elif args.ann_index == 'hnsw':
-        spec = f'hnsw_m128_efc{max(40, int(args.ann_ef_search))}'
+        clip_spec = frame_spec = (
+            f'hnsw_m{int(args.ann_hnsw_m)}_efc{max(40, int(args.ann_hnsw_ef_construction))}'
+        )
     else:
-        spec = 'flat_full'
-    stem = f'{cfg["dataset_name"]}_{token}_{bank_token}_{spec}'
-    return root, root / f'{stem}_clip.faiss', root / f'{stem}_frame.faiss'
+        clip_spec = frame_spec = 'flat_full'
+    prefix = f'{cfg["dataset_name"]}_{token}_{bank_token}'
+    return root, root / f'{prefix}_{clip_spec}_clip.faiss', root / f'{prefix}_{frame_spec}_frame.faiss'
 
 
-def _load_or_build_faiss_index(faiss, vectors, branch, path, cfg, args, logger):
+def _load_or_build_faiss_index(faiss, vectors, branch, path, cfg, args, logger, nlist, nprobe):
     """Load a persisted CPU FAISS index or build and atomically publish one."""
     if path.exists() and not args.ann_rebuild_index:
         index = faiss.read_index(str(path))
@@ -146,8 +168,8 @@ def _load_or_build_faiss_index(faiss, vectors, branch, path, cfg, args, logger):
     logger.info('ANN %s index cache miss; building %s (%d raw vectors)',
                 branch, args.ann_index, vectors.shape[0] * vectors.shape[1])
     index = _faiss_index(
-        faiss, vectors, args.ann_index, args.ann_nlist,
-        args.ann_nprobe, args.ann_ef_search)
+        faiss, vectors, args.ann_index, nlist, nprobe,
+        args.ann_hnsw_m, args.ann_hnsw_ef_construction)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + '.tmp')
     faiss.write_index(index, str(temporary))
@@ -222,23 +244,23 @@ def _write_summary(path, rows, args, context_source, num_videos):
             'candidate_k': args.ann_candidate_k,
         })
         if args.ann_index in ('ivf', 'ivf-gpu'):
-            clip_nlist = _resolve_ivf_nlist(args.ann_nlist, num_videos * 32)
-            frame_nlist = _resolve_ivf_nlist(args.ann_nlist, num_videos * 128)
+            clip_nlist, clip_nprobe = _ivf_settings(args, 'clip', num_videos * 32)
+            frame_nlist, frame_nprobe = _ivf_settings(args, 'frame', num_videos * 128)
             summary.update({
-                'ivf_nlist_rule': ('explicit' if args.ann_nlist else '2^floor(log2(sqrt(raw_corpus)))'),
+                'ivf_nlist_rule': 'per-branch explicit or 2^floor(log2(sqrt(raw_corpus)))',
                 'clip_ivf_nlist': clip_nlist,
                 'frame_ivf_nlist': frame_nlist,
-                'clip_ivf_nprobe': min(int(args.ann_nprobe), clip_nlist),
-                'frame_ivf_nprobe': min(int(args.ann_nprobe), frame_nlist),
+                'clip_ivf_nprobe': clip_nprobe,
+                'frame_ivf_nprobe': frame_nprobe,
             })
         elif args.ann_index == 'hnsw':
             summary.update({
-                'hnsw_m': 128,
-                'hnsw_ef_construction': max(40, int(args.ann_ef_search)),
+                'hnsw_m': int(args.ann_hnsw_m),
+                'hnsw_ef_construction': max(40, int(args.ann_hnsw_ef_construction)),
                 # HNSW must inspect at least k entries to return k usable raw
                 # candidates; these are the effective query-time values.
-                'clip_hnsw_ef_search': max(int(args.ann_ef_search), int(args.ann_clip_raw_k)),
-                'frame_hnsw_ef_search': max(int(args.ann_ef_search), int(args.ann_frame_raw_k)),
+                'clip_hnsw_ef_search': _hnsw_ef_search(args, 'clip', args.ann_clip_raw_k),
+                'frame_hnsw_ef_search': _hnsw_ef_search(args, 'frame', args.ann_frame_raw_k),
             })
     for field in timing_fields:
         values = sorted(float(row[field]) for row in rows)
@@ -292,16 +314,18 @@ def run_ann_benchmark(model, validator, context_loader, query_loader, cfg, args,
         backend = 'GPU (after CPU cache load)' if args.ann_index == 'ivf-gpu' else 'CPU'
         logger.info('ANN bank loaded from %s; V=%d D=%d; FAISS search backend=%s',
                     bank_path, V, clip_bank.shape[-1], backend)
-        _, clip_index_path, frame_index_path = _index_paths(cfg, args.resume, args, bank_path)
+        clip_nlist, clip_nprobe = _ivf_settings(args, 'clip', V * 32)
+        frame_nlist, frame_nprobe = _ivf_settings(args, 'frame', V * 128)
+        _, clip_index_path, frame_index_path = _index_paths(cfg, args.resume, args, bank_path, V)
         clip_index = _load_or_build_faiss_index(
-            faiss, clip_bank, 'clip', clip_index_path, cfg, args, logger)
+            faiss, clip_bank, 'clip', clip_index_path, cfg, args, logger, clip_nlist, clip_nprobe)
         frame_index = _load_or_build_faiss_index(
-            faiss, frame_bank, 'frame', frame_index_path, cfg, args, logger)
+            faiss, frame_bank, 'frame', frame_index_path, cfg, args, logger, frame_nlist, frame_nprobe)
         if args.ann_index in ('ivf', 'ivf-gpu'):
             # nprobe is a query-time setting, so it remains configurable even
             # when the trained IVF partition is loaded from disk.
-            clip_index.nprobe = min(int(args.ann_nprobe), clip_index.nlist)
-            frame_index.nprobe = min(int(args.ann_nprobe), frame_index.nlist)
+            clip_index.nprobe = clip_nprobe
+            frame_index.nprobe = frame_nprobe
         gpu_resources = None
         if args.ann_index == 'ivf-gpu':
             try:
@@ -314,15 +338,15 @@ def run_ann_benchmark(model, validator, context_loader, query_loader, cfg, args,
             gpu_device = torch.cuda.current_device()
             clip_index = faiss.index_cpu_to_gpu(gpu_resources, gpu_device, clip_index)
             frame_index = faiss.index_cpu_to_gpu(gpu_resources, gpu_device, frame_index)
-            clip_index.nprobe = min(int(args.ann_nprobe), clip_index.nlist)
-            frame_index.nprobe = min(int(args.ann_nprobe), frame_index.nlist)
+            clip_index.nprobe = clip_nprobe
+            frame_index.nprobe = frame_nprobe
             logger.info('ANN IVF indices cloned to FAISS GPU %d; CPU cache remains on disk', gpu_device)
         if args.ann_index == 'hnsw':
             # Faiss HNSW must examine at least k entries to return k valid raw
             # candidates.  Keep a user-specified larger efSearch, but never allow
             # it to silently truncate the requested 832/2948-depth searches.
-            clip_index.hnsw.efSearch = max(int(args.ann_ef_search), int(args.ann_clip_raw_k))
-            frame_index.hnsw.efSearch = max(int(args.ann_ef_search), int(args.ann_frame_raw_k))
+            clip_index.hnsw.efSearch = _hnsw_ef_search(args, 'clip', args.ann_clip_raw_k)
+            frame_index.hnsw.efSearch = _hnsw_ef_search(args, 'frame', args.ann_frame_raw_k)
     V = clip_bank.shape[0]
     if frame_bank.shape[0] != V or clip_bank.shape[1] != 32 or frame_bank.shape[1] != 128:
         raise ValueError('expected GMMFormer-v2 contexts [V,32,D] and [V,128,D]')

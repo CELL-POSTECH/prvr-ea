@@ -134,9 +134,21 @@ bash experiments/scripts/build_gmmformer_v2_context_bank.sh act 0
 bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf 0
 bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf-gpu 0
 bash experiments/scripts/benchmark_gmmformer_v2_ann.sh hnsw 0
+
+# Branch-specific ANN settings.
+# IVF: raw output k is unchanged; only nprobe is doubled.
+bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf 0 \
+  --clip 832 --frame 2948 --nprobe 128
+
+# HNSW: index.search k is unchanged; only efSearch is doubled.
+bash experiments/scripts/benchmark_gmmformer_v2_ann.sh hnsw 0 \
+  --clip 832 --frame 2948 --clip-ef-search 1664 --frame-ef-search 5896
 ```
 
 ANN outputs are stored under `experiments/ann_benchmark/GMMFormer_v2/act/`.
+`--clip/--frame` control raw `index.search` output k; `--nlist`,
+`--nprobe`, and `--ef-search` each accept shared or `--clip-*` / `--frame-*`
+branch-specific forms. GPU IVF caps each `index.search` k at 2048.
 
 ## Generated Files
 

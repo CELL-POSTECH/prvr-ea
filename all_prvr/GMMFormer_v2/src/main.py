@@ -53,7 +53,22 @@ parser.add_argument('--ann_candidate_k', default=30, type=int)
 parser.add_argument('--ann_nlist', default=0, type=int,
                     help='IVF list count; 0=per-branch 2^floor(log2(sqrt(raw corpus)))')
 parser.add_argument('--ann_nprobe', default=64, type=int)
-parser.add_argument('--ann_ef_search', default=256, type=int)
+parser.add_argument('--ann_clip_nlist', default=-1, type=int,
+                    help='clip IVF nlist; -1=use --ann_nlist')
+parser.add_argument('--ann_frame_nlist', default=-1, type=int,
+                    help='frame IVF nlist; -1=use --ann_nlist')
+parser.add_argument('--ann_clip_nprobe', default=-1, type=int,
+                    help='clip IVF nprobe; -1=use --ann_nprobe')
+parser.add_argument('--ann_frame_nprobe', default=-1, type=int,
+                    help='frame IVF nprobe; -1=use --ann_nprobe')
+parser.add_argument('--ann_ef_search', default=256, type=int,
+                    help='legacy HNSW efSearch shared by both branches')
+parser.add_argument('--ann_clip_ef_search', default=-1, type=int,
+                    help='clip HNSW efSearch; -1=use --ann_ef_search')
+parser.add_argument('--ann_frame_ef_search', default=-1, type=int,
+                    help='frame HNSW efSearch; -1=use --ann_ef_search')
+parser.add_argument('--ann_hnsw_m', default=128, type=int)
+parser.add_argument('--ann_hnsw_ef_construction', default=256, type=int)
 parser.add_argument('--ann_output', default='', type=str)
 parser.add_argument('--ann_max_queries', default=0, type=int, help='optional ANN smoke-test query limit (0 = all)')
 parser.add_argument('--synthetic_speed_eval', action='store_true', help='run synthetic 512-D full-pipeline speed evaluation (eval only)')
