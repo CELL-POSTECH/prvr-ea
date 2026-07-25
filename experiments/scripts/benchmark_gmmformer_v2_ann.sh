@@ -15,11 +15,20 @@ CKPT="${3:-$ROOT/all_prvr/GMMFormer_v2/results/clip/activitynet/gmmformer_v2/bes
 LIMIT="${4:-0}"
 OUT="$ROOT/experiments/ann_benchmark/GMMFormer_v2/act"
 mkdir -p "$OUT"
+EXTRA_ARGS=()
+OUTPUT_INDEX="$INDEX"
 
 case "$INDEX" in
   origin|flat_full|ivf|ivf-gpu|hnsw) ;;
   *) echo "invalid index: $INDEX (use origin, flat_full, ivf, ivf-gpu, or hnsw)" >&2; exit 2 ;;
 esac
+
+# FAISS GPU supports top-k selection only through k=2048.  The CPU-equivalent
+# frame candidate depth is 2948, so GPU IVF uses a clearly labeled capped run.
+if [[ "$INDEX" == "ivf-gpu" ]]; then
+  EXTRA_ARGS+=(--ann_frame_raw_k 2048)
+  OUTPUT_INDEX="ivf-gpu_frame2048"
+fi
 
 cd "$ROOT/all_prvr/GMMFormer_v2"
 
@@ -29,4 +38,5 @@ cd "$ROOT/all_prvr/GMMFormer_v2"
 
 "$PY" src/main.py -d act_clip --gpu "$GPU" --eval --resume "$CKPT" \
   --ann_benchmark --ann_index "$INDEX" --ann_max_queries "$LIMIT" \
-  --ann_output "$OUT/${INDEX}_cross_branch_only.csv"
+  "${EXTRA_ARGS[@]}" \
+  --ann_output "$OUT/${OUTPUT_INDEX}_cross_branch_only.csv"
