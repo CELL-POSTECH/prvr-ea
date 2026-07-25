@@ -1,0 +1,41 @@
+# Data and model artifacts
+datasets/**
+!datasets/README.md
+**/results/
+**/result/
+**/logs/
+**/ckpt/
+**/ann_context_bank/
+**/ann_faiss_indices/
+**/*.ckpt
+**/*.pth
+**/*.pth.tar
+**/*.pt
+**/*.hdf5
+**/*.faiss
+
+# Regenerated external-resource caches
+all_prvr/BOA/glove/
+all_prvr/ICCV25-HLFormer/prvr_model/
+all_prvr/ICML26-Holmes/Holmes_ICML/
+*.log
+
+# Generated experiment outputs
+experiments/recall_results/
+experiments/ann_benchmark/
+experiments/branch_ablation/
+experiments/branch_rank/
+experiments/latency_results/
+experiments/latency_single_query_results/
+experiments/latency_synthetic/
+experiments/logs/
+experiments/recall_*.csv
+experiments/archives/
+experiments/figures/
+experiments/latency_smoke/
+experiments/processing_time_results_*/
+all_prvr/smoke_logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
