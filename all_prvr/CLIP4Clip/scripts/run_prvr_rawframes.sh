@@ -6,7 +6,8 @@ set -euo pipefail
 #
 # Environment overrides: MAX_FRAMES, BATCH_SIZE, BATCH_SIZE_VAL, EPOCHS,
 # NUM_WORKERS, OUTPUT_ROOT, PYTHON_BIN, MAX_TRAIN_SAMPLES, MAX_EVAL_SAMPLES,
-# MULTI_GT=1 (dense multi-positive evaluation).
+# MULTI_GT=1 (dense multi-positive evaluation), CHUNK_SIZE (>0 for chunked
+# zero-shot raw-frame retrieval).
 
 MODE="${1:-}"
 DATASET="${2:-}"
@@ -29,6 +30,12 @@ MAX_FRAMES="${MAX_FRAMES:-128}"
 MAX_TRAIN_SAMPLES="${MAX_TRAIN_SAMPLES:-0}"
 MAX_EVAL_SAMPLES="${MAX_EVAL_SAMPLES:-0}"
 MULTI_GT="${MULTI_GT:-0}"
+CHUNK_SIZE="${CHUNK_SIZE:-0}"
+
+if ! [[ "${CHUNK_SIZE}" =~ ^[0-9]+$ ]]; then
+  echo "CHUNK_SIZE must be a non-negative integer, got: ${CHUNK_SIZE}" >&2
+  exit 2
+fi
 
 case "${DATASET}" in
   msrvtt)
@@ -92,6 +99,17 @@ case "${MODE}" in
     ;;
 esac
 
+if (( CHUNK_SIZE > 0 )); then
+  if [[ "${MODE}" != "zeroshot" ]]; then
+    echo "CHUNK_SIZE is supported only for zero-shot evaluation." >&2
+    exit 2
+  fi
+  OUT_DIR="${OUT_DIR}_chunk${CHUNK_SIZE}"
+  CHUNK_ARGS=(--chunk_size "${CHUNK_SIZE}")
+else
+  CHUNK_ARGS=()
+fi
+
 if [[ "${MULTI_GT}" == "1" ]]; then
   OUT_DIR="${OUT_DIR}_multiGT"
 fi
@@ -121,6 +139,7 @@ CUDA_VISIBLE_DEVICES="${GPU}" "${PYTHON_BIN}" -m torch.distributed.run \
   "${MULTI_GT_ARGS[@]}" \
   --max_words "${MAX_WORDS}" \
   --max_frames "${MAX_FRAMES}" \
+  "${CHUNK_ARGS[@]}" \
   --feature_framerate 1 \
   --coef_lr 1e-3 \
   --freeze_layer_num 0 \

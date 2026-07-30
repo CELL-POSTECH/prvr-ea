@@ -1,0 +1,18 @@
+# Generated plot galleries are large and reproducible from verification JSONL.
+/outputs/**/plots*/
+/outputs/tvr_qwen_plots/
+/outputs/archive/legacy_plots/
+/__pycache__
+# Upstream candidate JSONL files are generated and can be hundreds of MB.
+/outputs/upstream/*.jsonl
+/outputs/upstream/*.summary.json
+# Root-level generated outputs when this qwen directory is used from dense-labeling.
+../outputs/upstream/*.jsonl
+../outputs/upstream/*.summary.json
+../outputs/runs/
+/outputs/runs/
+/outputs/full_random100_review/
+/outputs/full_accept_reverify_current_prompt/
+
+outputs/runs/activitynet_shards/inputs/*.jsonl
+outputs/

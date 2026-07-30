@@ -1,0 +1,16 @@
+{
+  "source_annotation": "/home/jaewoo/annotations/tvr_val_release.jsonl",
+  "source_gt": "/home/jaewoo/datasets/tvr/TextData/tvrdenseval.gt.jsonl",
+  "filter": "type == v",
+  "annotation_rows_parsed": 10895,
+  "source_gt_type_counts": {
+    "v": 8097,
+    "vt": 1834,
+    "t": 964
+  },
+  "missing_type_rows": [],
+  "output_queries": 8097,
+  "avg_videos_per_query": 1.1772261331357292,
+  "multi_video_queries": 808,
+  "max_videos_per_query": 18
+}

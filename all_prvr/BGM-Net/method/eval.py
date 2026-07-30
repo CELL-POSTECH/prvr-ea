@@ -194,42 +194,47 @@ def compute_query2ctx_info(model, eval_dataset, opt, ctx_info):
     score_sum = []
     
     max_indices = []
-    for idx, batch in tqdm(enumerate(query_eval_loader), desc="Computing q embedding", total=len(query_eval_loader)):
+    # Evaluation has no backward pass.  Keeping every batch's [Q,V] score
+    # tensors (and their autograd graph) on GPU makes large collections such
+    # as ActivityNet grow GPU memory linearly with the number of queries.
+    # Preserve the original scores exactly, but retain the final score matrix
+    # on CPU until all query batches have been processed.
+    with torch.no_grad():
+        for idx, batch in tqdm(enumerate(query_eval_loader), desc="Computing q embedding", total=len(query_eval_loader)):
 
-        _query_metas = batch[-1]
-        query_metas.extend(batch[-1])
-        query_feat = batch[0].to(opt.device)
-        query_mask = batch[1].to(opt.device) 
+            _query_metas = batch[-1]
+            query_metas.extend(batch[-1])
+            query_feat = batch[0].to(opt.device)
+            query_mask = batch[1].to(opt.device)
         
-        # w_mod = wrap_module(model)
-        # inputs = (query_feat, query_mask, None, ctx_info["video_proposal_feat"], ctx_info["video_feat"], ctx_info['video_mask'],False,)
+            # w_mod = wrap_module(model)
+            # inputs = (query_feat, query_mask, None, ctx_info["video_proposal_feat"], ctx_info["video_feat"], ctx_info['video_mask'],False,)
         
-        # flops, params = profile(w_mod, inputs=inputs)
+            # flops, params = profile(w_mod, inputs=inputs)
 
-        # print("FLOPs=", str(flops/1e9) + '{}'.format("G"))
-        # print("params=", str(params/pow(2, )) + '{}'.format("M")) 
+            # print("FLOPs=", str(flops/1e9) + '{}'.format("G"))
+            # print("params=", str(params/pow(2, )) + '{}'.format("M"))
         
-        # print(f"FLOPs: {flops}")
-        # print(f"Params: {params}")
+            # print(f"FLOPs: {flops}")
+            # print(f"Params: {params}")
 
-        # flops = FlopCountAnalysis(w_mod, inputs)
-        # print("*" * 50, "FLOPs", "*"* 50)
-        # print(flops.total()/1e9/50)
-        # print("*" * 50, "FLOPs", "*"* 50)
-        # return
-        # add key_clip_indices here
-        _clip_scale_scores, _frame_scale_scores, key_clip_indices = model.get_pred_from_raw_query(
-            query_feat, query_mask, None, ctx_info["video_proposal_feat"], ctx_info["video_feat"], ctx_info['video_mask'],
-            is_train=False
-            )
+            # flops = FlopCountAnalysis(w_mod, inputs)
+            # print("*" * 50, "FLOPs", "*"* 50)
+            # print(flops.total()/1e9/50)
+            # print("*" * 50, "FLOPs", "*"* 50)
+            # return
+            # add key_clip_indices here
+            _clip_scale_scores, _frame_scale_scores, key_clip_indices = model.get_pred_from_raw_query(
+                query_feat, query_mask, None, ctx_info["video_proposal_feat"], ctx_info["video_feat"], ctx_info['video_mask'],
+                is_train=False
+                )
 
-        _score_sum = opt.clip_scale_w*_clip_scale_scores + opt.frame_scale_w*_frame_scale_scores
+            _score_sum = opt.clip_scale_w*_clip_scale_scores + opt.frame_scale_w*_frame_scale_scores
 
-        clip_scale_scores.append(_clip_scale_scores)
-        frame_scale_scores.append(_frame_scale_scores)
-        score_sum.append(_score_sum)
-        
-        max_indices.append(key_clip_indices)
+            clip_scale_scores.append(_clip_scale_scores.detach().cpu())
+            frame_scale_scores.append(_frame_scale_scores.detach().cpu())
+            score_sum.append(_score_sum.detach().cpu())
+            max_indices.append(key_clip_indices.detach().cpu())
         
     clip_scale_scores = torch.cat(clip_scale_scores, dim=0).cpu().numpy().copy()
     frame_scale_scores = torch.cat(frame_scale_scores, dim=0).cpu().numpy().copy()

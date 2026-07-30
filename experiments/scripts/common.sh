@@ -198,7 +198,10 @@ run_auto_eval_only() {
     command="cd $repo && $PYTHON_BIN $SCRIPT_DIR/eval_auto.py --repo $repo --model-dir $model_dir --gpu $GPU_ID ${eval_args[*]}"
     echo "[$(date -u +%FT%TZ)] GPU $GPU_ID: eval $model $dataset/$feature"
     if [[ "$model" == BGM-Net && "$dataset" == act ]]; then
-        export PRVR_RAW_DEDUP_EVAL_QUERY_BSZ="${PRVR_RAW_DEDUP_EVAL_QUERY_BSZ:-7}"
+        # 7 still peaks above 24 GiB while normalizing ActivityNet proposal
+        # representations. Two queries preserve the original score computation
+        # while leaving headroom for temporary normalization buffers.
+        export PRVR_RAW_DEDUP_EVAL_QUERY_BSZ="${PRVR_RAW_DEDUP_EVAL_QUERY_BSZ:-2}"
     fi
     if run_in_dir "$log" "$repo" "$PYTHON_BIN" "$SCRIPT_DIR/eval_auto.py" --repo "$repo" --model-dir "$model_dir" --gpu "$GPU_ID" "${eval_args[@]}"; then
         record "$model" "$dataset" "$(evaluation_feature "$feature")" ok "$log" "$checkpoint" "$command"

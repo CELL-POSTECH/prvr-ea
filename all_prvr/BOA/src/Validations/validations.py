@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import os
 from tqdm import tqdm
 import torch
 import h5py
@@ -74,6 +75,31 @@ class validations(nn.Module):
     def forward(self, model, context_dataloader, query_eval_loader, sval, epoch):
 
         model.eval()
+        # BOA uses distinct clip/frame query encoders.  Expose those exact
+        # query vectors only for the opt-in static ANN benchmark.
+        if os.environ.get('PRVR_STATIC_ANN_MODE'):
+            from ann_static_adapters import dual_query_gmm_style
+
+            def query_from_batch(net, batch):
+                query_feat, query_mask = batch[0], batch[1]
+                sc_masks_t = batch[4]
+                sc_masks_v = torch.as_tensor(batch[5], device=query_feat.device)
+                deviation_feat_c = sval.deviation_feat_c / sval.total_feature_num
+                deviation_feat_f = sval.deviation_feat_f / sval.total_feature_num
+                sc_feat_c = (sval.sc_feat_c / sval.sc_feat_n.unsqueeze(-1).
+                             repeat(1, deviation_feat_c.shape[0]) - deviation_feat_c.unsqueeze(0).
+                             repeat(sval.cluster_number, 1)).to(query_feat.device)
+                sc_feat_f = (sval.sc_feat_f / sval.sc_feat_n.unsqueeze(-1).
+                             repeat(1, deviation_feat_f.shape[0]) - deviation_feat_f.unsqueeze(0).
+                             repeat(sval.cluster_number, 1)).to(query_feat.device)
+                video_query, _ = net.encode_query(query_feat, query_mask, (sc_feat_c, sc_feat_f), sc_masks_t)
+                return video_query[0], video_query[1], batch[3]
+
+            return dual_query_gmm_style(
+                model=model, validator=self, context_loader=context_dataloader,
+                query_loader=query_eval_loader, cfg=self.cfg,
+                method=os.environ.get('PRVR_STATIC_ANN_METHOD', 'BOA'), batch_to_gpu=gpu,
+                query_from_batch=query_from_batch, context_kwargs={'sval': sval})
 
         context_info = self.compute_context_info(model, context_dataloader, sval)
         recorder = make_recorder(context_info['video_metas'], 'clip', 'frame', self.cfg['clip_scale_w'], self.cfg['frame_scale_w'])

@@ -264,6 +264,40 @@ def eval_epoch(model, val_video_dataset, val_text_dataset, opt, test=False):
     logger.info("Computing scores")
 
     context_info = compute_context_info(model, val_video_dataset, opt)
+    # DLDKD exposes two query-independent encoded frame banks (inheritance
+    # and exploration).  Keep the original score path below intact; this
+    # benchmark branch is reached only through PRVR_STATIC_ANN_MODE.
+    if os.environ.get('PRVR_STATIC_ANN_MODE'):
+        from ann_static_benchmark import run as run_static_ann
+
+        if context_info['explore_frame_feat'] is None:
+            raise RuntimeError('static ANN benchmark requires DLDKD double_branch=True')
+
+        def query_batches():
+            loader = DataLoader(val_text_dataset, collate_fn=collate_text_val,
+                                batch_size=opt.eval_query_bsz, num_workers=opt.num_workers,
+                                shuffle=False, pin_memory=opt.pin_memory)
+            for batch in loader:
+                query_feat = batch[0].to(opt.device)
+                query_mask = batch[-3].to(opt.device)
+                inheritance_query, exploration_query = model.encode_query(query_feat, query_mask)
+                yield inheritance_query, exploration_query, batch[-1]
+
+        output = os.environ.get('PRVR_STATIC_ANN_OUTPUT')
+        checkpoint = os.environ.get('PRVR_STATIC_ANN_CHECKPOINT')
+        if not output or not checkpoint:
+            raise RuntimeError('PRVR_STATIC_ANN_OUTPUT and PRVR_STATIC_ANN_CHECKPOINT are required')
+        metrics = run_static_ann(
+            method=os.environ.get('PRVR_STATIC_ANN_METHOD', 'DL-DKD'), checkpoint=checkpoint,
+            output=output,
+            index_dir=os.environ.get('PRVR_STATIC_ANN_INDEX_DIR',
+                                     os.path.join(os.path.dirname(checkpoint), 'ann_static_indices')),
+            video_ids=context_info['video_metas'], left_bank=context_info['inher_frame_feat'],
+            right_bank=context_info['explore_frame_feat'], query_batches=query_batches(),
+            left_weight=0.7, right_weight=0.3,
+            left_name='inheritance', right_name='exploration')
+        return metrics[-1]
+
     inher_scores, explore_scores, teacher_scores, query_metas = compute_query2ctx_info(model,val_text_dataset,opt,context_info)
     video_metas = context_info['video_metas']
 

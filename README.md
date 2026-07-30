@@ -1,19 +1,44 @@
-# PRVR Reproduction
+# PRVR EA
 
-Reproducible training and evaluation for PRVR/T2VR retrieval with ResNet/I3D and CLIP-B/32 features.
+Reproducible training and evaluation for PRVR/T2VR retrieval.
 
 ```text
 <repo-root>/
 ├── all_prvr/       # model code
 ├── datasets/       # dataset structure and setup guide
-└── experiments/    # launchers and experiment utilities
+├── experiments/    # launchers and experiment utilities
+├── llm-verification/# dense multi-GT label-generation pipeline
+├── env.sh           # conda environment installer
+└── env_faiss_gpu.sh # PRVR + ANN FAISS-GPU environment installer
 ```
 
-Dataset layout is described in [datasets/README.md](datasets/README.md).
+Dataset files and download sources are described in
+[datasets/README.md](datasets/README.md).
+
+## Dense Multi-GT Label Generation
+
+[`llm-verification/`](llm-verification/README.md) is the custom pipeline used
+to mine PRVR candidates, verify them with Qwen3-VL, and export dense
+multi-positive labels. Its released dense labels are under
+`llm-verification/expanded_datasets/`; copy them into the evaluator dataset
+layout when needed:
+
+```bash
+rsync -a llm-verification/expanded_datasets/ datasets/
+```
+
+See [llm-verification/README.md](llm-verification/README.md) for the Qwen3-VL
+environment and label-generation commands.
 
 ## Setup
 
-Run from the repository root. Override these paths when needed.
+Install the conda environment from the repository root:
+
+```bash
+bash env.sh
+```
+
+Set the project and data roots before running experiments:
 
 ```bash
 export PRVR_PROJECT_ROOT="$PWD"
@@ -21,75 +46,64 @@ export PRVR_DATA_ROOT="$PRVR_PROJECT_ROOT/datasets"
 export PRVR_PYTHON="python"
 ```
 
-## Models
-
-ResNet/I3D: AMDNet, GMMFormer, GMMFormer-v2, HLFormer, Holmes, DreamPRVR, BOA, DL-DKD, MS-SL, BGM-Net.
-
-CLIP: CLIP4Clip, AMDNet, GMMFormer, GMMFormer-v2, HLFormer, Holmes, DreamPRVR, BOA, MSC-PRVR, DL-DKD, MS-SL, BGM-Net.
-
-- CLIP4Clip is zero-shot raw-frame evaluation only.
-- MSC-PRVR is CLIP-only.
-- DL-DKD retains its original ResNet/I3D student and CLIP-B/32 teacher under both feature tables.
-
-All train/eval launchers use:
-
-```text
-<dataset|all> <gpu> [model|all]
-```
-
 Datasets: `act`, `tvr`, `cha`, `msrvtt`, `all`.
+Models: `AMDNet`, `GMMFormer`, `GMMFormer-v2`, `HLFormer`, `Holmes`,
+`DreamPRVR`, `BOA`, `MSC-PRVR`, `DL-DKD`, `MS-SL`, `BGM-Net`, and
+`CLIP4Clip` (CLIP only). MSC-PRVR is CLIP-only.
 
-## Train
+## Training
 
 ```bash
-# All compatible models and datasets.
+# ResNet/I3D features
 bash experiments/scripts/train_resnet.sh all 0 all
-bash experiments/scripts/train_clip.sh all 1 all
 
-# One condition.
-bash experiments/scripts/train_resnet.sh act 0 GMMFormer-v2
-bash experiments/scripts/train_clip.sh msrvtt 1 MSC-PRVR
+# CLIP-B/32 features
+bash experiments/scripts/train_clip.sh all 0 all
+
+# One model / dataset condition
+bash experiments/scripts/train_clip.sh act 0 GMMFormer-v2
 ```
 
 Checkpoints are written below `all_prvr/<model>/results/<feature>/<dataset>/`.
 
-## Single-GT Recall
+## Eval
+
+Evaluate standard single-GT recall from trained checkpoints. Results contain
+`Method,R@1,R@5,R@10`.
 
 ```bash
 bash experiments/scripts/eval_resnet.sh all 0 all
-bash experiments/scripts/eval_clip.sh all 1 all
+bash experiments/scripts/eval_clip.sh all 0 all
 ```
 
-The launchers evaluate available checkpoints and export one CSV per dataset:
+Outputs:
 
 ```text
 experiments/recall_results/recall_{resnet,clip}_{tvr,act,cha,msrvtt}.csv
 ```
 
-Each CSV has `Method,R@1,R@5,R@10`.
+## Re-evaluate: Dense Multi-GT Recall
 
-## Dense Multi-GT Recall
+Re-evaluate the checkpoints using verified multi-positive ground truth.
 
 ```bash
-bash experiments/scripts/eval_multigt_resnet.sh all 2 all
-bash experiments/scripts/eval_multigt_clip.sh all 3 all
+bash experiments/scripts/eval_multigt_resnet.sh all 0 all
+bash experiments/scripts/eval_multigt_clip.sh all 0 all
 ```
 
-Results are written to:
+Outputs:
 
 ```text
 experiments/recall_results/multiGT/recall_{resnet,clip}_<dataset>_multiGT.csv
 ```
 
-TVR dense evaluation uses `datasets/tvr/tvrdenseval_v.caption.txt` and `datasets/tvr/tvrdenseval_v.gt.jsonl`.
+## Dual-Branch Ablation
 
-## CLIP Dual-Branch Ablation
-
-The ablation evaluates CLIP checkpoints on ActivityNet and TVR under Base, clip-only, frame-only, branch mean pooling, and weighted branch mean pooling.
+Evaluate CLIP checkpoints on ActivityNet and TVR under Base, clip-only,
+frame-only, branch mean pooling, and weighted branch mean pooling.
 
 ```bash
 bash experiments/scripts/eval_branch_ablation_clip.sh all 0 all
-bash experiments/scripts/eval_branch_ablation_clip.sh act 0 GMMFormer-v2
 ```
 
 Outputs:
@@ -99,19 +113,14 @@ experiments/branch_ablation/clip/{act,tvr}.csv
 experiments/branch_ablation/clip/{act,tvr}_long.csv
 ```
 
-## Synthetic Retrieval Latency
+## PRVR Latency
 
-This benchmark measures CLIP4Clip and all PRVR methods over synthetic 512-D CLIP source features. Gallery/context encoding is offline preparation; reported E2E latency is query encoding plus retrieval over the prepared gallery.
+Measure query encoding and retrieval latency for CLIP4Clip and PRVR models on
+an automatically generated synthetic CLIP corpus.
 
 ```bash
-# All methods, 100K videos. The corpus is created automatically.
+# All methods, 100K videos
 bash experiments/scripts/latency.sh --gpu 0 100000
-
-# 100K, 500K, 1M, and 5M videos.
-bash experiments/scripts/latency.sh --gpu 0 --100k --500k --1m --5m
-
-# One method.
-bash experiments/scripts/latency.sh --gpu 0 --method GMMFormerV2 100000
 ```
 
 Outputs:
@@ -121,35 +130,51 @@ experiments/latency_results/latency_detail.csv
 experiments/latency_results/qps.csv
 ```
 
-## GMMFormer-v2 ANN Latency
+## PRVR + ANN Latency
 
-The benchmark measures retrieval only: clip search, frame search, deduplication, cross-branch rerank, fusion/top-10, and total time. Query/video encoding is outside the timing region.
+Measure origin, IVF CPU, IVF GPU, and HNSW retrieval latency for static
+dual-branch PRVR models. `*-x2` doubles only `nprobe` (IVF) or `efSearch`
+(HNSW). This experiment requires the separate FAISS-GPU environment; create
+and activate it before running the benchmark.
 
 ```bash
-# Original GMMFormer-v2 evaluation context pipeline; no context bank.
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh origin 0
-
-# IVF/HNSW use the pre-encoded context bank.
-bash experiments/scripts/build_gmmformer_v2_context_bank.sh act 0
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf 0
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf-gpu 0
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh hnsw 0
-
-# Branch-specific ANN settings.
-# IVF: raw output k is unchanged; only nprobe is doubled.
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh ivf 0 \
-  --clip 832 --frame 2948 --nprobe 128
-
-# HNSW: index.search k is unchanged; only efSearch is doubled.
-bash experiments/scripts/benchmark_gmmformer_v2_ann.sh hnsw 0 \
-  --clip 832 --frame 2948 --clip-ef-search 1664 --frame-ef-search 5896
+bash env_faiss_gpu.sh
+conda activate prvr_faiss_gpu
+export PRVR_PYTHON="python"
 ```
 
-ANN outputs are stored under `experiments/ann_benchmark/GMMFormer_v2/act/`.
-`--clip/--frame` control raw `index.search` output k; `--nlist`,
-`--nprobe`, and `--ef-search` each accept shared or `--clip-*` / `--frame-*`
-branch-specific forms. GPU IVF caps each `index.search` k at 2048.
+```bash
+# ActivityNet, all supported models and seven conditions
+for condition in origin ivf ivf-x2 ivf-gpu ivf-gpu-x2 hnsw hnsw-x2; do
+  bash experiments/scripts/benchmark_static_dual_ann.sh "$condition" 0 all 0
+done
 
-## Generated Files
+# TVR
+for condition in origin ivf ivf-x2 ivf-gpu ivf-gpu-x2 hnsw hnsw-x2; do
+  PRVR_STATIC_ANN_DATASET=tvr \
+    bash experiments/scripts/benchmark_static_dual_ann.sh "$condition" 0 all 0
+done
+```
 
-Checkpoints, feature files, raw frames, logs, indices, and experiment CSVs are generated artifacts and should not be committed. The repository `.gitignore` excludes them.
+Outputs are written to `experiments/ann_benchmark/<method>/<dataset>/` and
+`experiments/ann_benchmark/static_dual_ann_<dataset>_<condition>.csv`.
+
+## Recall with a Chunked Dataset
+
+Run CLIP4Clip TVR zero-shot recall using chunked raw-frame representations.
+The chunk scores are max-reduced to one score per parent video.
+
+```bash
+# One chunk size: 10, 20, or 30 sampled frames
+bash experiments/scripts/eval_clip4clip_chunked_tvr.sh 0 10
+
+# All chunk sizes
+bash experiments/scripts/eval_clip4clip_chunked_tvr.sh 0 all
+```
+
+Outputs:
+
+```text
+all_prvr/CLIP4Clip/results/rawframes/tvr/zeroshot_f128_chunk{10,20,30}/
+experiments/recall_results/recall_clip4clip_tvr_chunked.csv
+```
