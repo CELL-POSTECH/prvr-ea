@@ -7,7 +7,7 @@ set -euo pipefail
 # Environment overrides: MAX_FRAMES, BATCH_SIZE, BATCH_SIZE_VAL, EPOCHS,
 # NUM_WORKERS, OUTPUT_ROOT, PYTHON_BIN, MAX_TRAIN_SAMPLES, MAX_EVAL_SAMPLES,
 # MULTI_GT=1 (dense multi-positive evaluation), CHUNK_SIZE (>0 for chunked
-# zero-shot raw-frame retrieval).
+# zero-shot raw-frame retrieval before max-frame sampling).
 
 MODE="${1:-}"
 DATASET="${2:-}"

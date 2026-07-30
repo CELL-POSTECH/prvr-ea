@@ -48,7 +48,7 @@ class PRVRRawFramesRetrievalDataset(Dataset):
                  caption_root=None, max_words=30, feature_framerate=1.0,
                  max_frames=100, image_resolution=224, frame_order=0,
                  slice_framepos=0, max_samples=0, multi_gt_eval=False,
-                 multi_gt_caption_file=None, multi_gt_file=None):
+                 multi_gt_caption_file=None, multi_gt_file=None, chunk_size=0):
         if collection not in DEFAULT_DATA_ROOTS:
             raise ValueError("unsupported raw-frame collection: {}".format(collection))
         if subset not in ("train", "val", "test"):
@@ -63,6 +63,12 @@ class PRVRRawFramesRetrievalDataset(Dataset):
         self.max_frames = max_frames
         self.frame_order = frame_order
         self.slice_framepos = slice_framepos
+        self.chunk_size = int(chunk_size)
+        self.prechunk_eval = self.chunk_size > 0 and subset in ("val", "test")
+        if self.chunk_size < 0:
+            raise ValueError("chunk_size must be non-negative")
+        if self.prechunk_eval and self.chunk_size > self.max_frames:
+            raise ValueError("chunk_size must not exceed max_frames")
         self.data_path = data_path or DEFAULT_DATA_ROOTS[collection]
         self.caption_root = caption_root or os.path.join(self.data_path, "TextData")
         self.frame_root = frame_root or DEFAULT_FRAME_ROOTS[collection]
@@ -237,8 +243,58 @@ class PRVRRawFramesRetrievalDataset(Dataset):
         video_mask[0, :slice_len] = 1
         return video, video_mask
 
+    def iter_prechunked_videos(self):
+        """Yield ordered raw-frame chunks before any ``max_frames`` sampling.
+
+        Each yielded tensor is padded only to ``chunk_size``. This is used by
+        zero-shot chunked evaluation so a 170-frame video with chunk size 10
+        produces 17 representations, rather than at most 13 representations
+        after an initial 128-frame sample.
+        """
+        if not self.prechunk_eval:
+            raise RuntimeError("iter_prechunked_videos requires chunk_size > 0 during evaluation")
+
+        for parent_index, video_id in enumerate(self.video_to_rows):
+            frame_paths = self.rawFrameExtractor._list_frame_paths(self._resolve_frame_dir(video_id))
+            for start in range(0, len(frame_paths), self.chunk_size):
+                chunk_paths = frame_paths[start:start + self.chunk_size]
+                frame_data = self.rawFrameExtractor.get_frame_data_from_paths(chunk_paths)["video"]
+                raw_frame_slice = self.rawFrameExtractor.process_raw_data(frame_data)
+                raw_frame_slice = self.rawFrameExtractor.process_frame_order(
+                    raw_frame_slice, frame_order=self.frame_order
+                )
+
+                video = np.zeros((1, self.chunk_size, 1, 3,
+                                  self.rawFrameExtractor.size, self.rawFrameExtractor.size), dtype=np.float32)
+                video_mask = np.zeros((1, self.chunk_size), dtype=np.int64)
+                chunk_length = raw_frame_slice.shape[0]
+                video[0, :chunk_length] = raw_frame_slice
+                video_mask[0, :chunk_length] = 1
+                yield parent_index, video, video_mask
+
+    def prechunk_statistics(self):
+        if not self.prechunk_eval:
+            return None
+        counts = []
+        for video_id in self.video_to_rows:
+            frame_paths = self.rawFrameExtractor._list_frame_paths(self._resolve_frame_dir(video_id))
+            counts.append((len(frame_paths) + self.chunk_size - 1) // self.chunk_size)
+        return {
+            "videos": len(counts),
+            "mean_chunks": float(np.mean(counts)) if counts else 0.0,
+            "max_chunks": max(counts) if counts else 0,
+        }
+
     def __getitem__(self, idx):
         row = self.query_rows[idx]
         pairs_text, pairs_mask, pairs_segment = self._get_text(row["caption"])
+        if self.prechunk_eval:
+            # Chunk visuals are loaded separately and batched in eval_epoch.
+            # Keep the text dataloader light instead of loading a redundant
+            # max_frames-limited parent-video tensor for every caption.
+            video = np.zeros((1, 1, 1, 3,
+                              self.rawFrameExtractor.size, self.rawFrameExtractor.size), dtype=np.float32)
+            video_mask = np.zeros((1, 1), dtype=np.int64)
+            return pairs_text, pairs_mask, pairs_segment, video, video_mask
         video, video_mask = self._get_rawframes(row["video_id"])
         return pairs_text, pairs_mask, pairs_segment, video, video_mask

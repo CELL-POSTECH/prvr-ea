@@ -296,6 +296,7 @@ def dataloader_rawframes_test(args, tokenizer, subset="test"):
         multi_gt_eval=getattr(args, "multi_gt_eval", False),
         multi_gt_caption_file=getattr(args, "multi_gt_caption_file", None),
         multi_gt_file=getattr(args, "multi_gt_file", None),
+        chunk_size=getattr(args, "chunk_size", 0),
     )
     dataloader = DataLoader(
         dataset, batch_size=args.batch_size_val, num_workers=args.num_thread_reader,
