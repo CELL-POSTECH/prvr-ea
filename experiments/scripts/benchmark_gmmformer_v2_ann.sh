@@ -146,6 +146,9 @@ fi
 if (( CLIP_RAW_K != 832 || FRAME_RAW_K != 2948 || CLIP_NLIST != 0 || FRAME_NLIST != 0 || CLIP_NPROBE != 64 || FRAME_NPROBE != 64 || CLIP_EF_SEARCH != 256 || FRAME_EF_SEARCH != 256 || HNSW_M != 128 || HNSW_EF_CONSTRUCTION != 256 )); then
   OUTPUT_INDEX="${INDEX}_k${CLIP_RAW_K}-${FRAME_RAW_K}_nl${CLIP_NLIST}-${FRAME_NLIST}_np${CLIP_NPROBE}-${FRAME_NPROBE}_ef${CLIP_EF_SEARCH}-${FRAME_EF_SEARCH}"
 fi
+# The orchestrator uses stable condition names when it gathers the seven
+# benchmark settings.  Standalone invocations retain the descriptive default.
+[[ -z "${PRVR_ANN_OUTPUT_LABEL:-}" ]] || OUTPUT_INDEX="$PRVR_ANN_OUTPUT_LABEL"
 EXTRA_ARGS+=(
   --ann_clip_raw_k "$CLIP_RAW_K"
   --ann_frame_raw_k "$FRAME_RAW_K"

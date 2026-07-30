@@ -90,6 +90,13 @@ class validations(nn.Module):
     def forward(self, model, context_dataloader, query_eval_loader):
 
         model.eval()
+        # Opt-in benchmark path; ordinary evaluation below is unchanged.
+        if os.environ.get('PRVR_STATIC_ANN_MODE'):
+            from ann_static_adapters import gmm_style
+            return gmm_style(model=model, validator=self, context_loader=context_dataloader,
+                             query_loader=query_eval_loader, cfg=self.cfg,
+                             method=os.environ.get('PRVR_STATIC_ANN_METHOD', 'HLFormer'),
+                             batch_to_gpu=gpu)
 
         context_info = self.compute_context_info(model, context_dataloader)
         recorder = make_recorder(context_info['video_metas'], 'clip', 'frame', self.cfg['clip_scale_w'], self.cfg['frame_scale_w'])

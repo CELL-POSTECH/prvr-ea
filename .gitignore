@@ -1,6 +1,7 @@
 # Data and model artifacts
 datasets/**
 !datasets/README.md
+!datasets/multigt_labels.zip
 **/results/
 **/result/
 **/logs/

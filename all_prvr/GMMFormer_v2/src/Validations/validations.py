@@ -90,6 +90,16 @@ class validations(nn.Module):
     def forward(self, model, context_dataloader, query_eval_loader):
 
         model.eval()
+        # The cross-model static ANN benchmark intentionally uses the shared
+        # timing core used by every other static dual-branch method.  The
+        # dedicated --ann_benchmark path remains available for GMMFormer-v2
+        # only, but is not used by benchmark_static_dual_ann.sh.
+        if os.environ.get('PRVR_STATIC_ANN_MODE'):
+            from ann_static_adapters import gmm_style
+            return gmm_style(model=model, validator=self, context_loader=context_dataloader,
+                             query_loader=query_eval_loader, cfg=self.cfg,
+                             method=os.environ.get('PRVR_STATIC_ANN_METHOD', 'GMMFormer-v2'),
+                             batch_to_gpu=gpu)
 
         context_info = self.compute_context_info(model, context_dataloader)
         recorder = make_recorder(context_info['video_metas'], 'clip', 'frame', self.cfg['clip_scale_w'], self.cfg['frame_scale_w'])

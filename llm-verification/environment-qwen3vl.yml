@@ -1,0 +1,11 @@
+name: qwen3vl
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11.6
+  - pip
+  - ffmpeg
+  - git-lfs
+  - pip:
+      - -r requirements-qwen3vl.txt

@@ -60,6 +60,10 @@ def get_args(description='CLIP4Clip on Retrieval Task'):
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     parser.add_argument('--max_words', type=int, default=20, help='')
     parser.add_argument('--max_frames', type=int, default=100, help='')
+    parser.add_argument('--chunk_size', type=int, default=0,
+                        help='Raw-frame zero-shot eval only. If > 0, mean-pool consecutive '
+                             'frame representations in chunks of this size and use the maximum '
+                             'chunk score as the parent-video score. 0 keeps original CLIP4Clip.')
     parser.add_argument('--feature_framerate', type=int, default=1, help='')
     parser.add_argument('--margin', type=float, default=0.1, help='margin for loss')
     parser.add_argument('--hard_negative_rate', type=float, default=0.5, help='rate of intra negative sample')
@@ -317,7 +321,55 @@ def train_epoch(epoch, args, model, train_dataloader, device, n_gpu, optimizer, 
     total_loss = total_loss / len(train_dataloader)
     return total_loss, global_step
 
-def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_list, batch_visual_output_list):
+def _chunked_meanp_similarity(model, sequence_output, visual_output, video_mask, chunk_size):
+    """Return parent-video scores after fixed-size chunk mean pooling.
+
+    This is deliberately the same math as CLIP4Clip's loose ``meanP`` path
+    within each chunk: L2-normalize frame features, mean pool valid frames,
+    L2-normalize the chunk feature, then take the CLIP dot product.  A video
+    may yield several chunks, but their scores are max-reduced *before* the
+    retrieval ranking so a parent video occupies one ranked slot.
+    """
+    if not model.loose_type or model.sim_header != "meanP":
+        raise ValueError("--chunk_size requires --loose_type --sim_header meanP")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive in chunked similarity")
+
+    # Match modules/modeling.py::_loose_similarity(meanP) exactly up to the
+    # point where it would pool an entire video.
+    # The raw-frame loader retains a singleton ``pair`` dimension in the
+    # cached mask.  ``get_similarity_logits(..., shaped=False)`` flattens it
+    # internally; do the same here before addressing the temporal axis.
+    video_mask = video_mask.view(-1, video_mask.shape[-1])
+    visual_output = visual_output.contiguous()
+    visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+    sequence_output = sequence_output.squeeze(1)
+    sequence_output = sequence_output / sequence_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+    logit_scale = model.clip.logit_scale.exp()
+
+    batch_v, frame_count, _ = visual_output.shape
+    parent_scores = torch.full(
+        (sequence_output.size(0), batch_v), -float("inf"),
+        dtype=visual_output.dtype, device=visual_output.device,
+    )
+    for start in range(0, frame_count, chunk_size):
+        end = min(start + chunk_size, frame_count)
+        chunk_mask = video_mask[:, start:end].to(dtype=visual_output.dtype).unsqueeze(-1)
+        valid = chunk_mask.sum(dim=1)
+        valid_rows = valid.squeeze(-1) > 0
+        if not torch.any(valid_rows):
+            continue
+        chunk_output = (visual_output[:, start:end] * chunk_mask).sum(dim=1)
+        chunk_output = chunk_output / valid.clamp_min(1.0)
+        chunk_output = chunk_output / chunk_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+        chunk_scores = logit_scale * torch.matmul(sequence_output, chunk_output.t())
+        chunk_scores[:, ~valid_rows] = -float("inf")
+        parent_scores = torch.maximum(parent_scores, chunk_scores)
+    return parent_scores
+
+
+def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_list,
+                       batch_visual_output_list, chunk_size=0):
     sim_matrix = []
     for idx1, b1 in enumerate(batch_list_t):
         input_mask, segment_ids, *_tmp = b1
@@ -326,8 +378,13 @@ def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_
         for idx2, b2 in enumerate(batch_list_v):
             video_mask, *_tmp = b2
             visual_output = batch_visual_output_list[idx2]
-            b1b2_logits, *_tmp = model.get_similarity_logits(sequence_output, visual_output, input_mask, video_mask,
-                                                                     loose_type=model.loose_type)
+            if chunk_size > 0:
+                b1b2_logits = _chunked_meanp_similarity(
+                    model, sequence_output, visual_output, video_mask, chunk_size)
+            else:
+                b1b2_logits, *_tmp = model.get_similarity_logits(
+                    sequence_output, visual_output, input_mask, video_mask,
+                    loose_type=model.loose_type)
             b1b2_logits = b1b2_logits.cpu().detach().numpy()
             each_row.append(b1b2_logits)
         each_row = np.concatenate(tuple(each_row), axis=-1)
@@ -405,6 +462,15 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
     if multi_sentence_:
         logger.warning("Eval under the multi-sentence per video clip setting.")
         logger.warning("sentence num: {}, video num: {}".format(sentence_num_, video_num_))
+    if args.chunk_size < 0:
+        raise ValueError("--chunk_size must be 0 (original) or a positive integer")
+    if args.chunk_size > 0:
+        if not args.datatype.startswith("raw_"):
+            raise ValueError("--chunk_size is supported only for raw-frame datatypes")
+        if args.sim_header != "meanP" or not args.loose_type:
+            raise ValueError("--chunk_size requires --loose_type --sim_header meanP")
+        logger.info("Chunked raw-frame evaluation: chunk_size=%d; parent-video score=max(chunk scores)",
+                    args.chunk_size)
 
     model.eval()
     with torch.no_grad():
@@ -479,15 +545,29 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
                     batch_v_output_splits.append(devc_batch_list)
 
             parameters_tuple_list = [(batch_list_t_splits[dev_id], batch_list_v_splits[dev_id],
-                                      batch_t_output_splits[dev_id], batch_v_output_splits[dev_id]) for dev_id in device_ids]
+                                      batch_t_output_splits[dev_id], batch_v_output_splits[dev_id],
+                                      args.chunk_size) for dev_id in device_ids]
             parallel_outputs = parallel_apply(_run_on_single_gpu, model, parameters_tuple_list, device_ids)
             sim_matrix = []
             for idx in range(len(parallel_outputs)):
                 sim_matrix += parallel_outputs[idx]
             sim_matrix = np.concatenate(tuple(sim_matrix), axis=0)
         else:
-            sim_matrix = _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_list, batch_visual_output_list)
+            sim_matrix = _run_on_single_gpu(
+                model, batch_list_t, batch_list_v, batch_sequence_output_list,
+                batch_visual_output_list, args.chunk_size)
             sim_matrix = np.concatenate(tuple(sim_matrix), axis=0)
+
+        if args.chunk_size > 0:
+            chunk_counts = []
+            for (video_mask,) in batch_list_v:
+                video_mask = video_mask.view(-1, video_mask.shape[-1])
+                frame_lengths = video_mask.sum(dim=1).detach().cpu().tolist()
+                chunk_counts.extend((int(length) + args.chunk_size - 1) // args.chunk_size
+                                    for length in frame_lengths if int(length) > 0)
+            if chunk_counts:
+                logger.info("Chunk statistics: videos=%d mean_chunks=%.3f max_chunks=%d",
+                            len(chunk_counts), float(np.mean(chunk_counts)), max(chunk_counts))
 
     if getattr(args, "multi_gt_eval", False):
         # The score calculation above is intentionally identical to ordinary

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 import ipdb
 import numpy as np
 from tqdm import tqdm
@@ -221,6 +222,24 @@ class validations(nn.Module):
     def forward(self, model, context_dataloader, query_eval_loader, logger):
 
         model.eval()
+        # MSC-PRVR's two static video branches share its modularized query.
+        # This opt-in path leaves the original evaluator untouched.
+        if os.environ.get('PRVR_STATIC_ANN_MODE'):
+            from ann_static_adapters import dual_query_gmm_style
+
+            def query_from_batch(net, batch):
+                video_query, _ = net.encode_query(batch[0], batch[1])
+                return video_query, video_query, batch[-3]
+
+            metrics = dual_query_gmm_style(
+                model=model, validator=self, context_loader=context_dataloader,
+                query_loader=query_eval_loader, cfg=self.cfg,
+                method=os.environ.get('PRVR_STATIC_ANN_METHOD', 'MSC-PRVR'), batch_to_gpu=gpu,
+                query_from_batch=query_from_batch)
+            # This evaluator normally returns base/clip/frame metric triplets.
+            # Preserve that interface for the caller while ANN timing reports
+            # only the fused/base retrieval result.
+            return metrics, metrics, metrics
 
         context_info = self.compute_context_info(model, context_dataloader)
         score_sum, query_metas, video_query, clip_query, score_clip, score_frame = self.compute_query2ctx_info(model,

@@ -62,20 +62,27 @@ feature directory. Do not rename the directory used by the commands.
 | Charades videos | [Charades_v1.zip](https://ai2-public-datasets.s3.amazonaws.com/charades/Charades_v1.zip) | Raw-frame extraction for CLIP4Clip. |
 | MSR-VTT videos | [MSRVTT.zip](https://www.robots.ox.ac.uk/~maxbain/frozen-in-time/data/MSRVTT.zip) | Raw-frame extraction for CLIP4Clip. |
 | MSR-VTT metadata | [msrvtt_data.zip](https://github.com/ArrowLuo/CLIP4Clip/releases/download/v0.0/msrvtt_data.zip) | CLIP4Clip metadata. |
+| Verified dense multi-GT labels | [multigt_labels.zip](multigt_labels.zip) | Custom PRVR-candidate + Qwen3-VL verification output for dense evaluation. |
 
 ## Dense multi-GT evaluation
 
-Dense evaluation adds verified multiple positive videos per query. Keep the
-caption and ground-truth file together. The evaluation scripts discover these
-locations automatically.
+Dense evaluation adds verified multiple positive videos per query. Download the
+archive above and expand it directly into `datasets/`:
+
+```bash
+unzip -q datasets/multigt_labels.zip -d datasets/
+```
+
+The resulting files must be at these paths; the evaluation scripts discover
+them automatically:
 
 ```text
-activitynet/TextData/activitynetdenseval.caption.txt
-activitynet/TextData/activitynetdenseval.gt.jsonl
-charades/TextData/charadesdenseval.caption.txt
-charades/TextData/charadesdenseval.gt.jsonl
-msrvtt/TextData/msrvttdenseval.caption.txt
-msrvtt/TextData/msrvttdenseval.gt.jsonl
+activitynet/activitynetdenseval.caption.txt
+activitynet/activitynetdenseval.gt.jsonl
+charades/charadesdenseval.caption.txt
+charades/charadesdenseval.gt.jsonl
+msrvtt/msrvttdenseval.caption.txt
+msrvtt/msrvttdenseval.gt.jsonl
 tvr/tvrdenseval_v.caption.txt
 tvr/tvrdenseval_v.gt.jsonl
 ```
