@@ -179,12 +179,5 @@ python plot_tvr_qwen_verification.py \
   --overwrite
 ```
 
-## Artifact Notes
-
-- Do not commit datasets, model checkpoints, generated candidates, or run
-  outputs.
-- Use a neutral repository name for anonymous review.
-- Do not include personal paths, usernames, hostnames, API keys, or access
-  tokens in committed files.
-- If a web page is used for the artifact, add `noindex` metadata.
-- Do not use shortened tracking links for the artifact URL.
+If you encounter any issues, refer to the original model repositories for
+implementation-specific details.
