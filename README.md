@@ -177,3 +177,6 @@ Outputs:
 all_prvr/CLIP4Clip/results/rawframes/tvr/zeroshot_f128_chunk{10,20,30}/
 experiments/recall_results/recall_clip4clip_tvr_chunked.csv
 ```
+
+If you encounter any issues, refer to the original model repositories for
+implementation-specific details.
