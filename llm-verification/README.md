@@ -3,11 +3,11 @@
 This directory contains the custom pipeline used to mine TREC-style candidate
 moments from PRVR models and verify them with an LLM.
 
-The released labels are in `expanded_datasets/`. To use them with the PRVR
-evaluation scripts from the repository root, copy them into `datasets/`:
+The released labels are packaged at `../datasets/multigt_labels.zip`. To use
+them with the PRVR evaluation scripts from the repository root:
 
 ```bash
-rsync -a llm-verification/expanded_datasets/ datasets/
+unzip -q datasets/multigt_labels.zip -d datasets/
 ```
 
 The code is organized around three steps:

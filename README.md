@@ -19,12 +19,11 @@ Dataset files and download sources are described in
 
 [`llm-verification/`](llm-verification/README.md) is the custom pipeline used
 to mine PRVR candidates, verify them with Qwen3-VL, and export dense
-multi-positive labels. Its released dense labels are under
-`llm-verification/expanded_datasets/`; copy them into the evaluator dataset
-layout when needed:
+multi-positive labels. The released labels are packaged for direct extraction
+into the evaluator dataset layout:
 
 ```bash
-rsync -a llm-verification/expanded_datasets/ datasets/
+unzip -q datasets/multigt_labels.zip -d datasets/
 ```
 
 See [llm-verification/README.md](llm-verification/README.md) for the Qwen3-VL

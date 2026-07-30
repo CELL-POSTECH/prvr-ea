@@ -62,17 +62,15 @@ feature directory. Do not rename the directory used by the commands.
 | Charades videos | [Charades_v1.zip](https://ai2-public-datasets.s3.amazonaws.com/charades/Charades_v1.zip) | Raw-frame extraction for CLIP4Clip. |
 | MSR-VTT videos | [MSRVTT.zip](https://www.robots.ox.ac.uk/~maxbain/frozen-in-time/data/MSRVTT.zip) | Raw-frame extraction for CLIP4Clip. |
 | MSR-VTT metadata | [msrvtt_data.zip](https://github.com/ArrowLuo/CLIP4Clip/releases/download/v0.0/msrvtt_data.zip) | CLIP4Clip metadata. |
-| Verified dense multi-GT labels | [expanded_datasets.zip](../llm-verification/expanded_datasets.zip) | Custom PRVR-candidate + Qwen3-VL verification output for dense evaluation. |
+| Verified dense multi-GT labels | [multigt_labels.zip](multigt_labels.zip) | Custom PRVR-candidate + Qwen3-VL verification output for dense evaluation. |
 
 ## Dense multi-GT evaluation
 
 Dense evaluation adds verified multiple positive videos per query. Download the
-archive above (or use the copy in `../llm-verification/`) and expand it from
-this directory:
+archive above and expand it directly into `datasets/`:
 
 ```bash
-unzip -q ../llm-verification/expanded_datasets.zip
-rsync -a expanded_datasets/ ./
+unzip -q datasets/multigt_labels.zip -d datasets/
 ```
 
 The resulting files must be at these paths; the evaluation scripts discover
