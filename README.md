@@ -160,8 +160,9 @@ Outputs are written to `experiments/ann_benchmark/<method>/<dataset>/` and
 
 ## Recall with a Chunked Dataset
 
-Run CLIP4Clip TVR zero-shot recall using chunked raw-frame representations.
-The chunk scores are max-reduced to one score per parent video.
+Run CLIP4Clip TVR zero-shot recall by splitting each original ordered raw-frame
+sequence into chunks before any max-frame sampling. The chunk scores are
+max-reduced to one score per parent video.
 
 ```bash
 # One chunk size: 10, 20, or 30 sampled frames

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# TVR CLIP4Clip ViT-B/32 raw-frame zero-shot evaluation with fixed-size
-# chunked video representations.  The parent-video score is max over chunks.
+# TVR CLIP4Clip ViT-B/32 raw-frame zero-shot evaluation. The original ordered
+# raw-frame sequence is split into fixed-size chunks before any max-frame
+# sampling; the parent-video score is max over chunk scores.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

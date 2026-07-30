@@ -129,12 +129,18 @@ class RawFrameExtractor(RawVideoExtractorCV2):
         sample_idx = np.linspace(0, len(frame_paths) - 1, num=max_frames, dtype=int)
         return [frame_paths[idx] for idx in sample_idx]
 
-    def get_frame_data(self, frame_dir, max_frames=None, slice_framepos=0):
-        frame_paths = self._sample_frame_paths(
-            self._list_frame_paths(frame_dir), max_frames=max_frames, slice_framepos=slice_framepos
-        )
+    def get_frame_data_from_paths(self, frame_paths):
+        """Load and preprocess an already selected ordered frame sequence."""
+        if not frame_paths:
+            raise ValueError("frame_paths must not be empty")
         images = []
         for frame_path in frame_paths:
             with Image.open(frame_path) as image:
                 images.append(self.transform(image.convert("RGB")))
         return {"video": th.stack(images, dim=0)}
+
+    def get_frame_data(self, frame_dir, max_frames=None, slice_framepos=0):
+        frame_paths = self._sample_frame_paths(
+            self._list_frame_paths(frame_dir), max_frames=max_frames, slice_framepos=slice_framepos
+        )
+        return self.get_frame_data_from_paths(frame_paths)
