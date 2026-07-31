@@ -15,8 +15,8 @@ METHOD_ORDER = [
     ("DreamPRVR", "DreamPRVR"),
     ("Holmes", "Holmes"),
     ("BOA", "BOA"),
-    ("DL-DKD", "DL-DKD"),
     ("MSC-PRVR", "MSC-PRVR"),
+    ("DL-DKD", "DL-DKD"),
     ("MS-SL", "MS-SL"),
     ("BGM-Net", "BGMNet"),
 ]

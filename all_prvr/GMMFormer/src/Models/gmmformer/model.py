@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 try:
-    from raw_dedup_stats import capture_from_env
+    from raw_dedup_stats import capture_from_env, capture_vector_pools
 except ImportError:
     capture_from_env = lambda *_args, **_kwargs: None
+    capture_vector_pools = lambda *_args, **_kwargs: None
 import numpy as np
 from easydict import EasyDict as edict
 from Models.gmmformer.model_components import BertAttention, LinearLayer, \
@@ -220,6 +221,10 @@ class GMMFormer_Net(nn.Module):
 
         frame_scale_scores = torch.matmul(F.normalize(encoded_frame_feat, dim=-1), F.normalize(video_query, dim=-1).t()).permute(1, 0)
         capture_from_env(frame_scale_scores.unsqueeze(1))
+        capture_vector_pools(
+            video_query, video_proposal_feat,
+            video_query, encoded_frame_feat.unsqueeze(1),
+        )
 
         if return_query_feats:
             clip_scale_scores_ = self.get_unnormalized_clip_scale_scores(video_query, video_proposal_feat)

@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 try:
-    from raw_dedup_stats import capture_from_env
+    from raw_dedup_stats import capture_from_env, capture_vector_pools
 except ImportError:
     capture_from_env = lambda *_args, **_kwargs: None
+    capture_vector_pools = lambda *_args, **_kwargs: None
 import numpy as np
 from easydict import EasyDict as edict
 from method.model_components import BertAttention, LinearLayer, BertSelfAttention, TrainablePositionalEncoding
@@ -284,6 +285,13 @@ class MS_SL_Net(nn.Module):
             # Analysis-only: this branch has one final representation/video.
             # The original [Q,V] scores and return value remain unchanged.
             capture_from_env(frame_scale_scores.unsqueeze(1))
+            # ``frame_scale_feat`` is [V,Q,D]: one query-conditioned frame
+            # representation per video.  Align it to [Q,V,1,D] for the
+            # vector-pooling ablation without touching original inference.
+            capture_vector_pools(
+                video_query, video_proposal_feat,
+                video_query, frame_scale_feat.permute(1, 0, 2).unsqueeze(2),
+            )
 
             return clip_scale_scores, frame_scale_scores
 

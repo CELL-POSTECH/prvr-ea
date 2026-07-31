@@ -418,6 +418,56 @@ def _run_on_single_gpu(model, batch_list_t, batch_list_v, batch_sequence_output_
     return sim_matrix
 
 
+def _prechunked_parent_similarity(model, sequence_outputs, chunk_outputs,
+                                  parent_indices, parent_video_num,
+                                  query_batch_size):
+    """Score all pre-encoded raw chunks, then max-reduce to parent videos.
+
+    The previous implementation nested text batches and chunk batches.  For
+    TVR chunk=10 this meant roughly 341 text batches x 1,300 chunk batches,
+    i.e. hundreds of thousands of tiny GPU similarity calls.  ``meanP`` is
+    just normalized dot-product scoring, so concatenate the chunk bank and
+    process one query batch against it at a time instead.  The score and the
+    parent-video max reduction are mathematically unchanged.
+    """
+    if not sequence_outputs or not chunk_outputs:
+        raise ValueError("pre-chunked similarity requires non-empty text and chunk caches")
+
+    sequence_output = torch.cat(sequence_outputs, dim=0).squeeze(1)
+    sequence_output = sequence_output / sequence_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+    chunk_output = torch.cat(chunk_outputs, dim=0)
+    chunk_output = chunk_output / chunk_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+    if chunk_output.size(0) != parent_indices.numel():
+        raise ValueError("pre-chunk output and parent-index counts differ")
+
+    logit_scale = model.clip.logit_scale.exp()
+    total_queries = int(sequence_output.size(0))
+    step = max(1, int(query_batch_size))
+    report_step, next_report = max(1, total_queries // 20), max(1, total_queries // 20)
+    started = time.time()
+    sim_rows = []
+    for start in range(0, total_queries, step):
+        stop = min(start + step, total_queries)
+        chunk_scores = logit_scale * torch.matmul(sequence_output[start:stop], chunk_output.t())
+        parent_scores = torch.full(
+            (stop - start, int(parent_video_num)), -float("inf"),
+            dtype=chunk_scores.dtype, device=chunk_scores.device,
+        )
+        scatter_indices = parent_indices.unsqueeze(0).expand(stop - start, -1)
+        parent_scores.scatter_reduce_(1, scatter_indices, chunk_scores, reduce="amax", include_self=True)
+        sim_rows.append(parent_scores.cpu().numpy())
+
+        if stop >= next_report or stop == total_queries:
+            elapsed = time.time() - started
+            rate = stop / max(elapsed, 1e-6)
+            eta = (total_queries - stop) / max(rate, 1e-6)
+            logger.info("Chunk retrieval: %d/%d queries (%.1f%%), elapsed %.1fs, ETA %.1fs",
+                        stop, total_queries, 100.0 * stop / total_queries, elapsed, eta)
+            while next_report <= stop:
+                next_report += report_step
+    return np.concatenate(tuple(sim_rows), axis=0)
+
+
 def _load_multi_gt_mapping(gt_path):
     mapping = OrderedDict()
     with open(gt_path, "r", encoding="utf-8") as reader:
@@ -513,6 +563,9 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
         # ----------------------------
         # 1. cache the features
         # ----------------------------
+        text_started = time.time()
+        text_report_step = max(1, len(test_dataloader) // 20)
+        text_next_report = text_report_step
         for bid, batch in enumerate(test_dataloader):
             batch = tuple(t.to(device) for t in batch)
             input_ids, input_mask, segment_ids, video, video_mask = batch
@@ -523,7 +576,6 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
                 # max_frames sampling, rather than once per caption.
                 sequence_output = model.get_sequence_output(input_ids, segment_ids, input_mask)
                 batch_sequence_output_list.append(sequence_output)
-                batch_list_t.append((input_mask, segment_ids,))
             elif multi_sentence_:
                 # multi-sentences retrieval means: one clip has two or more descriptions.
                 b, *_t = video.shape
@@ -549,50 +601,81 @@ def eval_epoch(args, model, test_dataloader, device, n_gpu):
                 batch_visual_output_list.append(visual_output)
                 batch_list_v.append((video_mask,))
 
-            print("{}/{}\r".format(bid, len(test_dataloader)), end="")
+            completed = bid + 1
+            if completed >= text_next_report or completed == len(test_dataloader):
+                elapsed = time.time() - text_started
+                rate = completed / max(elapsed, 1e-6)
+                eta = (len(test_dataloader) - completed) / max(rate, 1e-6)
+                logger.info("Text encoding: %d/%d batches (%.1f%%), elapsed %.1fs, ETA %.1fs",
+                            completed, len(test_dataloader),
+                            100.0 * completed / len(test_dataloader), elapsed, eta)
+                while text_next_report <= completed:
+                    text_next_report += text_report_step
 
         if raw_prechunked:
             pending_videos, pending_masks, pending_parents = [], [], []
+            pooled_chunk_outputs = []
             parent_chunk_counts = [0] * video_num_
 
             def flush_pending_chunks():
                 if not pending_videos:
-                    return
+                    return 0
                 video = torch.from_numpy(np.stack(pending_videos, axis=0)).to(device)
                 video_mask = torch.from_numpy(np.stack(pending_masks, axis=0)).to(device)
                 visual_output = model.get_visual_output(video, video_mask)
-                batch_visual_output_list.append(visual_output)
-                batch_list_v.append((video_mask,))
-                chunk_parent_indices.append(
-                    torch.tensor(pending_parents, dtype=torch.long, device=device)
-                )
+                # This exactly matches CLIP4Clip's loose meanP visual path.
+                flat_mask = video_mask.view(-1, video_mask.shape[-1])
+                visual_output = visual_output / visual_output.norm(dim=-1, keepdim=True).clamp_min(1e-12)
+                pooled = (visual_output * flat_mask.to(visual_output.dtype).unsqueeze(-1)).sum(dim=1)
+                pooled = pooled / flat_mask.sum(dim=1, keepdim=True).to(visual_output.dtype).clamp_min(1.0)
+                pooled_chunk_outputs.append(pooled / pooled.norm(dim=-1, keepdim=True).clamp_min(1e-12))
+                parent_indices = torch.tensor(pending_parents, dtype=torch.long, device=device)
+                chunk_parent_indices.append(parent_indices)
+                count = int(parent_indices.numel())
                 pending_videos.clear()
                 pending_masks.clear()
                 pending_parents.clear()
+                return count
 
             dataset = test_dataloader.dataset
             chunk_batch_size = max(1, int(args.batch_size_val))
+            chunk_stats = dataset.prechunk_statistics() or {}
+            total_chunks = int(chunk_stats.get("chunks", 0))
+            chunk_started = time.time()
+            chunk_report_step = max(1, total_chunks // 20)
+            chunk_next_report = chunk_report_step
+            encoded_chunks = 0
+            logger.info("Raw chunk encoding: %d videos, %d chunks, batch_size=%d",
+                        video_num_, total_chunks, chunk_batch_size)
             for parent_index, chunk_video, chunk_mask in dataset.iter_prechunked_videos():
                 pending_videos.append(chunk_video)
                 pending_masks.append(chunk_mask)
                 pending_parents.append(parent_index)
                 parent_chunk_counts[parent_index] += 1
                 if len(pending_videos) >= chunk_batch_size:
-                    flush_pending_chunks()
-            flush_pending_chunks()
-            logger.info("Raw pre-chunk statistics: videos=%d mean_chunks=%.3f max_chunks=%d",
-                        len(parent_chunk_counts), float(np.mean(parent_chunk_counts)), max(parent_chunk_counts))
+                    encoded_chunks += flush_pending_chunks()
+                    if encoded_chunks >= chunk_next_report or encoded_chunks == total_chunks:
+                        elapsed = time.time() - chunk_started
+                        rate = encoded_chunks / max(elapsed, 1e-6)
+                        eta = (total_chunks - encoded_chunks) / max(rate, 1e-6)
+                        logger.info("Raw chunk encoding: %d/%d (%.1f%%), elapsed %.1fs, ETA %.1fs",
+                                    encoded_chunks, total_chunks, 100.0 * encoded_chunks / max(total_chunks, 1),
+                                    elapsed, eta)
+                        while chunk_next_report <= encoded_chunks:
+                            chunk_next_report += chunk_report_step
+            encoded_chunks += flush_pending_chunks()
+            logger.info("Raw pre-chunk statistics: videos=%d chunks=%d mean_chunks=%.3f max_chunks=%d",
+                        len(parent_chunk_counts), encoded_chunks,
+                        float(np.mean(parent_chunk_counts)), max(parent_chunk_counts))
 
         # ----------------------------------
         # 2. calculate the similarity
         # ----------------------------------
         if raw_prechunked:
-            sim_matrix = _run_on_single_gpu(
-                model, batch_list_t, batch_list_v, batch_sequence_output_list,
-                batch_visual_output_list, chunk_parent_indices=chunk_parent_indices,
-                parent_video_num=video_num_,
+            sim_matrix = _prechunked_parent_similarity(
+                model, batch_sequence_output_list, pooled_chunk_outputs,
+                torch.cat(chunk_parent_indices, dim=0), video_num_, args.batch_size_val,
             )
-            sim_matrix = np.concatenate(tuple(sim_matrix), axis=0)
         elif n_gpu > 1:
             device_ids = list(range(n_gpu))
             batch_list_t_splits = []

@@ -281,6 +281,7 @@ class PRVRRawFramesRetrievalDataset(Dataset):
             counts.append((len(frame_paths) + self.chunk_size - 1) // self.chunk_size)
         return {
             "videos": len(counts),
+            "chunks": int(sum(counts)),
             "mean_chunks": float(np.mean(counts)) if counts else 0.0,
             "max_chunks": max(counts) if counts else 0,
         }

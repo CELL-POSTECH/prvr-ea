@@ -5,14 +5,19 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-MODELS=(GMMFormer GMMFormer-v2 HLFormer DreamPRVR Holmes BOA DL-DKD MSC-PRVR MS-SL BGM-Net)
+# DL-DKD reports only Base and its two original branches. Its
+# inheritance/exploration query encoders are independent, so MP/WMP is not
+# defined and is intentionally omitted for that model.
+MODELS=(GMMFormer GMMFormer-v2 HLFormer DreamPRVR Holmes BOA MSC-PRVR DL-DKD MS-SL BGM-Net)
 
 usage() {
   cat <<'EOF'
 Usage: bash experiments/scripts/eval_branch_ablation_clip.sh <act|tvr|all> <gpu> [model|all] [--dry-run]
 
-Runs existing CLIP-feature checkpoints for dual-branch ablation.  DL-DKD uses
-its original dual-feature checkpoint, as in the recall CLIP table.
+Runs existing CLIP-feature checkpoints for dual-branch ablation. Mean-pooling
+conditions pool branch representation vectors before cosine scoring. DL-DKD
+reports Base, inheritance-only, and exploration-only only; its MP/WMP cells
+are intentionally empty because its branch query encoders are independent.
 
 Output:
   experiments/branch_ablation/clip/act.csv
@@ -56,9 +61,9 @@ checkpoint_for() {
   local model="$1" dataset="$2" collection repo_rel spec
   collection="$(collection_for "$dataset")"
   case "$model" in
-    DL-DKD) latest_model_checkpoint "$PRVR_ROOT/DL-DKD" "$dataset" resnet ;;
     MS-SL) latest_model_checkpoint "$PRVR_ROOT/ms-sl" "$dataset" clip ;;
     BGM-Net) latest_model_checkpoint "$PRVR_ROOT/BGM-Net" "$dataset" clip ;;
+    DL-DKD) latest_model_checkpoint "$PRVR_ROOT/DL-DKD" "$dataset" resnet ;;
     *)
       spec="$(config_spec "$model")"; IFS='|' read -r repo_rel _ _ <<< "$spec"
       latest_checkpoint "$PRVR_ROOT/$repo_rel/results/clip/$collection"
@@ -86,6 +91,18 @@ sequence_for() {
   esac
 }
 
+weights_for() {
+  local model="$1" dataset="$2"
+  case "$model/$dataset" in
+    DreamPRVR/act) echo '0.6 0.4' ;;
+    DreamPRVR/tvr) echo '0.5 0.5' ;;
+    Holmes/*) echo '0.6 0.4' ;;
+    BOA/*) echo '0.5 0.5' ;;
+    MSC-PRVR/*) echo '0.4 0.6' ;;
+    *) echo '0.7 0.3' ;;
+  esac
+}
+
 failures=0
 for dataset in "${DATASETS[@]}"; do
   for model in "${SELECTED[@]}"; do
@@ -103,10 +120,12 @@ for dataset in "${DATASETS[@]}"; do
     partial_long="$long.partial"
     branches="$(branch_map_for "$model" "$dataset")"
     sequence="$(sequence_for "$model")"
+    read -r left_weight right_weight <<< "$(weights_for "$model" "$dataset")"
     echo "[$(date -u +%FT%TZ)] branch-ablation $model/$dataset -> $summary"
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "  checkpoint: $checkpoint"
       echo "  branches:   $branches"
+      echo "  weights:    $left_weight / $right_weight"
       [[ -z "$sequence" ]] || echo "  sequence:   $sequence"
       continue
     fi
@@ -117,15 +136,20 @@ for dataset in "${DATASETS[@]}"; do
     export PRVR_BRANCH_ABLATION_DATASET="$dataset"
     export PRVR_BRANCH_ABLATION_CHECKPOINT="$checkpoint"
     export PRVR_BRANCH_ABLATION_BRANCHES="$branches"
+    export PRVR_BRANCH_ABLATION_LEFT_WEIGHT="$left_weight"
+    export PRVR_BRANCH_ABLATION_RIGHT_WEIGHT="$right_weight"
+    if [[ "$model" == DL-DKD ]]; then
+      export PRVR_BRANCH_ABLATION_POOLING=0
+    else
+      unset PRVR_BRANCH_ABLATION_POOLING
+    fi
     if [[ -n "$sequence" ]]; then
       export PRVR_BRANCH_ABLATION_SEQUENCE="$sequence"
     else
       unset PRVR_BRANCH_ABLATION_SEQUENCE
     fi
     [[ "$model" == BGM-Net && "$dataset" == act ]] && export PRVR_RAW_DEDUP_EVAL_QUERY_BSZ=7 || unset PRVR_RAW_DEDUP_EVAL_QUERY_BSZ
-    run_feature=clip
-    [[ "$model" == DL-DKD ]] && run_feature=resnet
-    if run_one eval "$model" "$dataset" "$run_feature"; then
+    if run_one eval "$model" "$dataset" clip; then
       if [[ ! -s "$partial_summary" || ! -s "$partial_long" ]]; then
         echo "ablation collector did not create output for $model/$dataset" >&2
         failures=$((failures + 1))
@@ -137,7 +161,7 @@ for dataset in "${DATASETS[@]}"; do
       echo "failed branch ablation: $model/$dataset" >&2
       failures=$((failures + 1))
     fi
-    unset PRVR_BRANCH_ABLATION_OUTPUT PRVR_BRANCH_ABLATION_LONG_OUTPUT PRVR_BRANCH_ABLATION_METHOD PRVR_BRANCH_ABLATION_DATASET PRVR_BRANCH_ABLATION_CHECKPOINT PRVR_BRANCH_ABLATION_BRANCHES PRVR_BRANCH_ABLATION_SEQUENCE PRVR_RAW_DEDUP_EVAL_QUERY_BSZ
+    unset PRVR_BRANCH_ABLATION_OUTPUT PRVR_BRANCH_ABLATION_LONG_OUTPUT PRVR_BRANCH_ABLATION_METHOD PRVR_BRANCH_ABLATION_DATASET PRVR_BRANCH_ABLATION_CHECKPOINT PRVR_BRANCH_ABLATION_BRANCHES PRVR_BRANCH_ABLATION_LEFT_WEIGHT PRVR_BRANCH_ABLATION_RIGHT_WEIGHT PRVR_BRANCH_ABLATION_SEQUENCE PRVR_BRANCH_ABLATION_POOLING PRVR_RAW_DEDUP_EVAL_QUERY_BSZ
   done
   if [[ "$DRY_RUN" -eq 0 ]]; then
     "$PYTHON_BIN" "$SCRIPT_DIR/aggregate_branch_ablation.py" \

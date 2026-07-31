@@ -7,7 +7,9 @@ set -euo pipefail
 # Environment overrides: MAX_FRAMES, BATCH_SIZE, BATCH_SIZE_VAL, EPOCHS,
 # NUM_WORKERS, OUTPUT_ROOT, PYTHON_BIN, MAX_TRAIN_SAMPLES, MAX_EVAL_SAMPLES,
 # MULTI_GT=1 (dense multi-positive evaluation), CHUNK_SIZE (>0 for chunked
-# zero-shot raw-frame retrieval before max-frame sampling).
+# zero-shot raw-frame retrieval before max-frame sampling), and
+# RAW_FRAME_CPU_THREADS (default: 1, avoiding per-image thread oversubscription
+# on high-core-count hosts).
 
 MODE="${1:-}"
 DATASET="${2:-}"
@@ -31,11 +33,24 @@ MAX_TRAIN_SAMPLES="${MAX_TRAIN_SAMPLES:-0}"
 MAX_EVAL_SAMPLES="${MAX_EVAL_SAMPLES:-0}"
 MULTI_GT="${MULTI_GT:-0}"
 CHUNK_SIZE="${CHUNK_SIZE:-0}"
+RAW_FRAME_CPU_THREADS="${RAW_FRAME_CPU_THREADS:-1}"
 
 if ! [[ "${CHUNK_SIZE}" =~ ^[0-9]+$ ]]; then
   echo "CHUNK_SIZE must be a non-negative integer, got: ${CHUNK_SIZE}" >&2
   exit 2
 fi
+if ! [[ "${RAW_FRAME_CPU_THREADS}" =~ ^[0-9]+$ ]] || (( RAW_FRAME_CPU_THREADS < 1 )); then
+  echo "RAW_FRAME_CPU_THREADS must be a positive integer, got: ${RAW_FRAME_CPU_THREADS}" >&2
+  exit 2
+fi
+
+# PIL/torch preprocessing is performed once per raw image.  Letting every
+# image use all host CPU threads is dramatically slower on high-core-count
+# machines (and starves the frame loader).  Respect explicit user settings.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-${RAW_FRAME_CPU_THREADS}}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-${RAW_FRAME_CPU_THREADS}}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-${RAW_FRAME_CPU_THREADS}}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-${RAW_FRAME_CPU_THREADS}}"
 
 case "${DATASET}" in
   msrvtt)

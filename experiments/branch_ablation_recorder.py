@@ -12,10 +12,11 @@ The ablations are:
   - Weighed Branch Mean Pooling: config-weighted mean of branch-wise raw
     representation-level similarities.
 
-The mean-pooling scores are computed from the normalized representation-level
-similarities captured immediately before each model's unchanged max reduction.
-This is equivalent to scoring the unnormalized mean-pooled branch representation
-with the same query vector used by the original max-sim primitive.
+For models with a shared branch query, mean-pooling scores are computed from
+encoded context vectors before max-sim reduction: pool vectors, L2-normalize
+the pooled result, then score it against the query. DL-DKD has independent
+inheritance/exploration query encoders, so it records only Base and its two
+original branch scores.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from typing import Dict, Iterable
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 SUMMARY_FIELDS = [
@@ -87,6 +89,7 @@ class BranchAblationRecorder:
         self.method = os.environ.get("PRVR_BRANCH_ABLATION_METHOD", "")
         self.dataset = os.environ.get("PRVR_BRANCH_ABLATION_DATASET", "")
         self.checkpoint = os.environ.get("PRVR_BRANCH_ABLATION_CHECKPOINT", "")
+        self.pooling_enabled = os.environ.get("PRVR_BRANCH_ABLATION_POOLING", "1") != "0"
         self.video_ids: list[str] | None = None
         self.query_metas: list[str] = []
         self.left_name = "clip"
@@ -95,6 +98,11 @@ class BranchAblationRecorder:
         self.right_weight = 0.3
         self.max_scores: Dict[str, list[torch.Tensor]] = defaultdict(list)
         self.raw_mean_scores: Dict[str, list[torch.Tensor]] = defaultdict(list)
+        # Vector-pooling conditions are captured directly by model hooks.  They
+        # are intentionally separate from raw_mean_scores: averaging scores is
+        # not the same operation as mean-pooling representations followed by a
+        # cosine similarity.
+        self.vector_pool_scores: Dict[str, list[torch.Tensor]] = defaultdict(list)
         self.repr_counts: Dict[str, int] = {}
         self.closed = False
 
@@ -103,6 +111,69 @@ class BranchAblationRecorder:
             return
         self.raw_mean_scores[branch].append(raw_scores.detach().float().mean(dim=1).cpu())
         self.repr_counts[branch] = int(repr_per_video)
+
+    @staticmethod
+    def _pool_context(context: torch.Tensor, query_count: int) -> tuple[torch.Tensor, int]:
+        """Return query-aligned pooled contexts as ``[Q, V, D]``.
+
+        A normal branch context is ``[V, R, D]``.  MS-SL/BGM-Net's final
+        frame representation is query-conditioned and is supplied as
+        ``[Q, V, R, D]``.  Pooling is deliberately performed *before* cosine
+        normalization so this is a real representation-level ablation.
+        """
+        if context.ndim == 3:
+            reps = int(context.shape[1])
+            pooled = context.mean(dim=1).unsqueeze(0).expand(query_count, -1, -1)
+            return pooled, reps
+        if context.ndim == 4:
+            if context.shape[0] != query_count:
+                raise ValueError("query-conditioned context has inconsistent query dimension")
+            reps = int(context.shape[2])
+            return context.mean(dim=2), reps
+        raise ValueError(f"expected context [V,R,D] or [Q,V,R,D], got {tuple(context.shape)}")
+
+    def capture_vector_pools(
+        self,
+        left_query: torch.Tensor,
+        left_context: torch.Tensor,
+        right_query: torch.Tensor,
+        right_context: torch.Tensor,
+        left_weight: float,
+        right_weight: float,
+    ) -> None:
+        """Record true vector-pooling retrieval matrices for one query batch."""
+        if left_query.ndim != 2 or right_query.ndim != 2:
+            raise ValueError("pooled-vector ablation requires [Q,D] query tensors")
+        if left_query.shape != right_query.shape:
+            raise ValueError("left/right query tensors must have the same shape")
+
+        q_count = int(left_query.shape[0])
+        left, left_reps = self._pool_context(left_context, q_count)
+        right, right_reps = self._pool_context(right_context, q_count)
+        if left.shape != right.shape:
+            raise ValueError("left/right pooled contexts must have matching [Q,V,D] shapes")
+
+        # Mean pooling treats every representation equally.  Weighted pooling
+        # first averages within each branch, then follows the original model's
+        # branch-fusion weights.
+        mean_context = (left * left_reps + right * right_reps) / float(left_reps + right_reps)
+        weighted_context = float(left_weight) * left + float(right_weight) * right
+
+        # BOA has two branch-specific query vectors.  Keep the query rule
+        # independent of the number of video representations: use their
+        # simple mean for both pooled-video conditions.  Other models provide
+        # the same query for both branches, so this is equivalent after L2
+        # normalization.
+        pooled_query = 0.5 * (left_query + right_query)
+
+        mean_scores = torch.einsum(
+            "qd,qvd->qv", F.normalize(pooled_query, dim=-1), F.normalize(mean_context, dim=-1)
+        )
+        weighted_scores = torch.einsum(
+            "qd,qvd->qv", F.normalize(pooled_query, dim=-1), F.normalize(weighted_context, dim=-1)
+        )
+        self.vector_pool_scores["Branch Mean Pooling"].append(mean_scores.detach().float().cpu())
+        self.vector_pool_scores["Weighed Branch Mean Pooling"].append(weighted_scores.detach().float().cpu())
 
     def add_scores(
         self,
@@ -158,22 +229,28 @@ class BranchAblationRecorder:
             "Frame-level branch": torch.cat(self.max_scores["frame"], dim=0),
         }
         n_rows = len(self.query_metas)
-        left_mean = self._concat_raw_mean(self.left_name, n_rows)
-        right_mean = self._concat_raw_mean(self.right_name, n_rows)
-        if left_mean is None:
-            left_mean = scores["Clip-level branch"]
-            self.repr_counts.setdefault(self.left_name, 1)
-        if right_mean is None:
-            right_mean = scores["Frame-level branch"]
-            self.repr_counts.setdefault(self.right_name, 1)
-        left_repr = self.repr_counts.get(self.left_name, 1)
-        right_repr = self.repr_counts.get(self.right_name, 1)
-        scores["Branch Mean Pooling"] = (
-            left_mean * float(left_repr) + right_mean * float(right_repr)
-        ) / float(left_repr + right_repr)
-        scores["Weighed Branch Mean Pooling"] = (
-            self.left_weight * left_mean + self.right_weight * right_mean
-        )
+        vector_mean = self.vector_pool_scores.get("Branch Mean Pooling")
+        vector_weighted = self.vector_pool_scores.get("Weighed Branch Mean Pooling")
+        if self.pooling_enabled and vector_mean and vector_weighted:
+            scores["Branch Mean Pooling"] = torch.cat(vector_mean, dim=0)[:n_rows]
+            scores["Weighed Branch Mean Pooling"] = torch.cat(vector_weighted, dim=0)[:n_rows]
+        elif self.pooling_enabled:
+            left_mean = self._concat_raw_mean(self.left_name, n_rows)
+            right_mean = self._concat_raw_mean(self.right_name, n_rows)
+            if left_mean is None:
+                left_mean = scores["Clip-level branch"]
+                self.repr_counts.setdefault(self.left_name, 1)
+            if right_mean is None:
+                right_mean = scores["Frame-level branch"]
+                self.repr_counts.setdefault(self.right_name, 1)
+            left_repr = self.repr_counts.get(self.left_name, 1)
+            right_repr = self.repr_counts.get(self.right_name, 1)
+            scores["Branch Mean Pooling"] = (
+                left_mean * float(left_repr) + right_mean * float(right_repr)
+            ) / float(left_repr + right_repr)
+            scores["Weighed Branch Mean Pooling"] = (
+                self.left_weight * left_mean + self.right_weight * right_mean
+            )
 
         metrics = {
             condition: _recall(matrix, self.query_metas, self.video_ids)
@@ -188,8 +265,10 @@ class BranchAblationRecorder:
                 "Base": _format_triplet(metrics["Base"]),
                 "Clip-level branch": _format_triplet(metrics["Clip-level branch"]),
                 "Frame-level branch": _format_triplet(metrics["Frame-level branch"]),
-                "Branch Mean Pooling": _format_triplet(metrics["Branch Mean Pooling"]),
-                "Weighed Branch Mean Pooling": _format_triplet(metrics["Weighed Branch Mean Pooling"]),
+                "Branch Mean Pooling": _format_triplet(metrics["Branch Mean Pooling"])
+                if "Branch Mean Pooling" in metrics else "",
+                "Weighed Branch Mean Pooling": _format_triplet(metrics["Weighed Branch Mean Pooling"])
+                if "Weighed Branch Mean Pooling" in metrics else "",
             })
         with self.long_output.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=LONG_FIELDS)
@@ -228,6 +307,16 @@ def capture_raw(branch: str, raw_scores: torch.Tensor, repr_per_video: int) -> N
     recorder = get_recorder()
     if recorder is not None:
         recorder.capture_raw(branch, raw_scores, repr_per_video)
+
+
+def capture_vector_pools(left_query, left_context, right_query, right_context,
+                         left_weight, right_weight) -> None:
+    recorder = get_recorder()
+    if recorder is not None:
+        recorder.capture_vector_pools(
+            left_query, left_context, right_query, right_context,
+            left_weight, right_weight,
+        )
 
 
 def record_full(

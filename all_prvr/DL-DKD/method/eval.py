@@ -22,6 +22,10 @@ try:
     from branch_rank_recorder import record_full
 except ImportError:
     record_full = None
+try:
+    from branch_ablation_recorder import record_full as record_ablation_full
+except ImportError:
+    record_ablation_full = None
 sys.path.append(str(project_root))
 
 from method.model import DLDKD
@@ -310,6 +314,11 @@ def eval_epoch(model, val_video_dataset, val_text_dataset, opt, test=False):
         cal_perf(-1 * explore_scores, t2v_gt,test)
         logging.info('score_sum:')
         score_sum = 0.7 * inher_scores + 0.3 * explore_scores
+        if record_ablation_full is not None:
+            record_ablation_full(
+                video_metas, query_metas, inher_scores, explore_scores,
+                'inheritance', 'exploration', 0.7, 0.3, score_sum,
+            )
         if record_full is not None:
             record_full(video_metas, query_metas, inher_scores, explore_scores,
                         'inheritance', 'exploration', 0.7, 0.3, score_sum)

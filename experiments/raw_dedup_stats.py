@@ -305,6 +305,20 @@ def capture(branch: str, raw_scores: torch.Tensor, repr_per_video: int) -> None:
         summary.add(branch, raw_scores, repr_per_video)
 
 
+def capture_vector_pools(left_query, left_context, right_query, right_context,
+                         left_weight=None, right_weight=None) -> None:
+    """Forward opt-in representation-level pooling data to branch ablation."""
+    if branch_ablation_recorder is not None:
+        if left_weight is None:
+            left_weight = float(os.environ.get("PRVR_BRANCH_ABLATION_LEFT_WEIGHT", "0.7"))
+        if right_weight is None:
+            right_weight = float(os.environ.get("PRVR_BRANCH_ABLATION_RIGHT_WEIGHT", "0.3"))
+        branch_ablation_recorder.capture_vector_pools(
+            left_query, left_context, right_query, right_context,
+            left_weight, right_weight,
+        )
+
+
 def capture_from_env(raw_scores: torch.Tensor) -> None:
     """Capture a [Q,R,V] score tensor using the launcher-provided repr map."""
     if raw_scores.ndim != 3:

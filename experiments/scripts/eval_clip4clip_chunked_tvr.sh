@@ -22,6 +22,7 @@ EOF
 GPU_ID="$1"
 REQUESTED_CHUNK="$2"
 [[ "$GPU_ID" =~ ^[0-9]+$ ]] || { echo "gpu must be a non-negative integer" >&2; exit 2; }
+RAW_FRAME_CPU_THREADS="${RAW_FRAME_CPU_THREADS:-1}"
 
 case "$REQUESTED_CHUNK" in
   10|20|30) CHUNKS=("$REQUESTED_CHUNK") ;;
@@ -39,13 +40,13 @@ for CHUNK_SIZE in "${CHUNKS[@]}"; do
   FEATURE="rawframes128_chunk${CHUNK_SIZE}"
   LOG="$(new_log_path CLIP4Clip tvr "$FEATURE")"
   RUN_DIR="$REPO/results/rawframes/tvr/zeroshot_f128_chunk${CHUNK_SIZE}"
-  COMMAND="cd $REPO && MAX_FRAMES=128 CHUNK_SIZE=$CHUNK_SIZE MAX_EVAL_SAMPLES=0 BATCH_SIZE_VAL=32 NUM_WORKERS=2 PYTHON_BIN=$PYTHON_BIN bash scripts/run_prvr_rawframes.sh zeroshot tvr $GPU_ID"
+  COMMAND="cd $REPO && MAX_FRAMES=128 CHUNK_SIZE=$CHUNK_SIZE MAX_EVAL_SAMPLES=0 BATCH_SIZE_VAL=32 NUM_WORKERS=2 RAW_FRAME_CPU_THREADS=$RAW_FRAME_CPU_THREADS PYTHON_BIN=$PYTHON_BIN bash scripts/run_prvr_rawframes.sh zeroshot tvr $GPU_ID"
   echo "[$(date -u +%FT%TZ)] GPU $GPU_ID: CLIP4Clip TVR zero-shot max_frames=128 chunk_size=$CHUNK_SIZE"
   if (
       cd "$REPO"
-      MAX_FRAMES=128 CHUNK_SIZE="$CHUNK_SIZE" MAX_EVAL_SAMPLES=0 BATCH_SIZE_VAL=32 NUM_WORKERS=2 \
+      MAX_FRAMES=128 CHUNK_SIZE="$CHUNK_SIZE" MAX_EVAL_SAMPLES=0 BATCH_SIZE_VAL=32 NUM_WORKERS=2 RAW_FRAME_CPU_THREADS="$RAW_FRAME_CPU_THREADS" \
         PYTHON_BIN="$PYTHON_BIN" bash "$RUNNER" zeroshot tvr "$GPU_ID"
-  ) >"$LOG" 2>&1; then
+  ) 2>&1 | tee "$LOG"; then
     "$PYTHON_BIN" "$EXPORTER" --csv "$CSV" --log "$LOG" --run-dir "$RUN_DIR" \
       --chunk-size "$CHUNK_SIZE" --max-frames 128
     record CLIP4Clip tvr "$FEATURE" ok "$LOG" "$RUN_DIR" "$COMMAND"

@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 try:
-    from raw_dedup_stats import capture_from_env
+    from raw_dedup_stats import capture_from_env, capture_vector_pools
 except ImportError:
     capture_from_env = lambda *_args, **_kwargs: None
+    capture_vector_pools = lambda *_args, **_kwargs: None
 import numpy as np
 from easydict import EasyDict as edict
 from Models.boa.model_components import BertAttention, LinearLayer, \
@@ -290,6 +291,13 @@ class BOA_Net(nn.Module):
         # get clip-level retrieval scores
         clip_scale_scores, index_c, clip_scores = self.get_clip_scale_scores(video_query[0], video_proposal_feat)
         frame_scale_scores, index_f, frame_scores = self.get_clip_scale_scores(video_query[1], encoded_frame_feat)
+        # BOA has separate clip/frame query vectors.  For vector-pooling
+        # ablations, the hook mean-pools these queries and pools the context
+        # vectors according to the selected video pooling rule.
+        capture_vector_pools(
+            video_query[0], video_proposal_feat,
+            video_query[1], encoded_frame_feat,
+        )
 
         if return_query_feats:
             sval.enhance((video_proposal_feat.clone().detach(),

@@ -99,7 +99,9 @@ experiments/recall_results/multiGT/recall_{resnet,clip}_<dataset>_multiGT.csv
 ## Dual-Branch Ablation
 
 Evaluate CLIP checkpoints on ActivityNet and TVR under Base, clip-only,
-frame-only, branch mean pooling, and weighted branch mean pooling.
+frame-only, branch mean pooling, and weighted branch mean pooling. DL-DKD
+reports Base, inheritance-only, and exploration-only because its two branches
+use independent query encoders.
 
 ```bash
 bash experiments/scripts/eval_branch_ablation_clip.sh all 0 all

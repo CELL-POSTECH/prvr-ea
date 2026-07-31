@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 try:
-    from raw_dedup_stats import capture_from_env
+    from raw_dedup_stats import capture_from_env, capture_vector_pools
 except ImportError:
     capture_from_env = lambda *_args, **_kwargs: None
+    capture_vector_pools = lambda *_args, **_kwargs: None
 import numpy as np
 from easydict import EasyDict as edict
 import math
@@ -467,6 +468,12 @@ class BGM_Net(nn.Module):
             # Analysis-only: the frame branch has one final representation per
             # video, so expose its unchanged [Q,V] scores as [Q,1,V].
             capture_from_env(frame_scale_scores.unsqueeze(1))
+            # The attended frame vector is query-conditioned ([V,Q,D]).  Keep
+            # its query axis for representation-level pooling.
+            capture_vector_pools(
+                video_query, video_proposal_feat,
+                video_query, frame_scale_feat.permute(1, 0, 2).unsqueeze(2),
+            )
 
             return clip_scale_scores, frame_scale_scores, key_clip_indices
 
