@@ -196,7 +196,9 @@ def main():
         # These are CLI-injected by MSC_PRVR/src/main.py in ordinary eval.
         # They configure training losses/model construction, not the scoring
         # equation, but must be present for the original builder.
-        cfg.update({"model_name": "N_np", "map_size": 32, "vl_coef": 0.1,
+        # Match the original ActivityNet MSC-PRVR configuration: both the
+        # multi-scale clip branch and frame branch retain 128 vectors.
+        cfg.update({"model_name": "N_np", "map_size": 128, "vl_coef": 0.1,
                     "sim_thr": 0.5, "rkd_d_coef": 10.0, "rkd_a_coef": 20.0,
                     "rkd_angle_chunk_size": 0})
     model = get_models(cfg)
