@@ -1,6 +1,7 @@
 # Data and model artifacts
 datasets/**
 !datasets/README.md
+!datasets/extract_raw_frames.py
 !datasets/multigt_labels.zip
 !datasets/candidate_mining_annotations.zip
 **/results/

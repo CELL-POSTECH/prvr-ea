@@ -133,4 +133,21 @@ msrvtt/raw_frames/<video_id>/*.jpg
 tvr/raw_frames/frames_hq/<show>_frames/<video_id>/*.jpg
 ```
 
+TVR frames are distributed by TVQA. For ActivityNet, Charades, and MSR-VTT,
+extract frames from raw videos with:
+
+```bash
+DATASET=<activitynet|charades|msrvtt>
+
+python datasets/extract_raw_frames.py \
+  --dataset "$DATASET" \
+  --video-root "$PRVR_DATA_ROOT/$DATASET/raw_videos" \
+  --output-root "$PRVR_DATA_ROOT/$DATASET/raw_frames" \
+  --workers 8
+```
+
+The default extraction rate is `1.5` fps, matching the prepared CLIP-B/32 video
+feature lengths used by candidate mining. Output frame names are sequential:
+`000001.jpg`, `000002.jpg`, ...
+
 The frame loader samples up to the configured `--max_frames` from each video.
