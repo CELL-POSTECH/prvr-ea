@@ -4,7 +4,7 @@ Set `PRVR_DATA_ROOT` to this directory (the default is `./datasets`).  All
 paths below are relative to `$PRVR_DATA_ROOT`.
 
 ```bash
-export PRVR_DATA_ROOT=/path/to/prvr-experiments/datasets
+export PRVR_DATA_ROOT=/path/to/datasets
 ```
 
 ## Required layout
@@ -90,10 +90,10 @@ msrvtt/MSRVTT_data.videos.jsonl
 ## Dense multi-GT evaluation
 
 Dense evaluation adds verified multiple positive videos per query. Download the
-archive above and expand it directly into `datasets/`:
+archive above and expand it directly into `$PRVR_DATA_ROOT`:
 
 ```bash
-unzip -q datasets/multigt_labels.zip -d datasets/
+unzip -q datasets/multigt_labels.zip -d "$PRVR_DATA_ROOT"
 ```
 
 The resulting files must be at these paths; the evaluation scripts discover
@@ -121,10 +121,11 @@ annotations/tvr_val_release.jsonl
 glove.840B.300d.txt
 ```
 
-## Raw frames for CLIP4Clip
+## Raw videos and frames
 
-Feature-based PRVR train/eval does not use raw frames. CLIP4Clip and candidate
-mining read JPEG frames from these paths:
+Feature-based PRVR train/eval does not use raw videos or raw frames.
+
+CLIP4Clip PRVR evaluation reads JPEG frames from these paths:
 
 ```text
 activitynet/raw_frames/<video_id>/*.jpg
@@ -133,28 +134,41 @@ msrvtt/raw_frames/<video_id>/*.jpg
 tvr/raw_frames/frames_hq/<show>_frames/<video_id>/*.jpg
 ```
 
-TVR frames are distributed by TVQA. For ActivityNet, Charades, and MSR-VTT,
-extract frames from raw videos with:
-
-```bash
-DATASET=<activitynet|charades|msrvtt>
-
-python datasets/extract_raw_frames.py \
-  --dataset "$DATASET" \
-  --video-root "$PRVR_DATA_ROOT/$DATASET/raw_videos" \
-  --output-root "$PRVR_DATA_ROOT/$DATASET/raw_frames" \
-  --workers 8
-```
-
-Default extraction rates are dataset-specific and follow the prepared CLIP-B/32
-video feature lengths used by candidate mining:
+TVR frames are distributed by TVQA. ActivityNet, Charades, and MSR-VTT are
+distributed as raw videos; prepare the `raw_frames` directories before running
+CLIP4Clip PRVR evaluation. For ActivityNet and Charades, sample raw videos at 3
+fps and resize the shorter side to 224 pixels:
 
 ```text
-activitynet: 1.875 fps
-charades:    3.0 fps
-msrvtt:      1.5 fps
+activitynet: 3 fps, short side 224
+charades:    3 fps, short side 224
 ```
 
-Output frame names are sequential: `000001.jpg`, `000002.jpg`, ...
+LLM verification candidate mining uses CLIP video features for retrieval. It
+also stores frame paths for the 8 GT frames and 8 pseudo frames used by the
+verification step. These verification inputs are kept separate from CLIP4Clip
+`raw_frames`.
 
-The frame loader samples up to the configured `--max_frames` from each video.
+Candidate mining writes verification-frame paths under:
+
+```text
+activitynet/verification_frames/<video_id>/*.jpg
+tvr/verification_frames/<video_id>/*.jpg
+charades/verification_frames/<video_id>/*.jpg
+msrvtt/verification_frames/<video_id>/*.jpg
+```
+
+TVR verification frames are copied from the distributed raw frames:
+
+```text
+tvr/raw_frames/frames_hq/<show>_frames/<video_id>/*.jpg
+```
+
+ActivityNet, Charades, and MSR-VTT verification frames are materialized from
+raw videos:
+
+```text
+activitynet/raw_videos/<video_file>
+charades/raw_videos/<video_file>
+msrvtt/raw_videos/<video_file>
+```

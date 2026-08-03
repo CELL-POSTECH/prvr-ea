@@ -24,7 +24,7 @@ ActivityNet example with local raw videos:
       --pure-clip-cache outputs/activitynet_rankings_from_ckpts/pure_clip_frame_topP1000_top100.jsonl \
       --frame-source videos \
       --video-root datasets/activitynet/raw_videos \
-      --sampled-frame-root datasets/activitynet/raw_frames \
+      --sampled-frame-root datasets/activitynet/verification_frames \
       --output outputs/upstream/pseudo_gt_candidates.activitynet.jsonl
 
 Generic rank inputs:
@@ -47,6 +47,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 from collections import defaultdict, deque
 from pathlib import Path
@@ -73,7 +74,8 @@ DATASET_DEFAULTS: Dict[str, Dict[str, Optional[str]]] = {
         "query_feat": data_path("tvr", "TextData", "clip_ViT_B_32_tvr_query_feat.hdf5"),
         "video_feat": data_path("tvr", "FeatureData", "new_clip_vit_32_tvr_vid_features.hdf5"),
         "frame_root": data_path("tvr", "raw_frames", "frames_hq"),
-        "sampled_frame_root": None,
+        "sampled_frame_root": data_path("tvr", "verification_frames"),
+        "frame_source": "frames",
     },
     "activitynet": {
         "annotation": data_path("activitynet", "TextData", "activitynet_val.jsonl"),
@@ -81,15 +83,17 @@ DATASET_DEFAULTS: Dict[str, Dict[str, Optional[str]]] = {
         "query_feat": data_path("activitynet", "TextData", "clip_ViT_B_32_activitynet_query_feat.hdf5"),
         "video_feat": data_path("activitynet", "FeatureData", "new_clip_vit_32_activitynet_vid_features.hdf5"),
         "frame_root": data_path("activitynet", "raw_frames"),
-        "sampled_frame_root": data_path("activitynet", "raw_frames"),
+        "sampled_frame_root": data_path("activitynet", "verification_frames"),
+        "frame_source": "paths",
     },
     "charades": {
         "annotation": data_path("charades", "TextData", "charades_val.jsonl"),
         "val_caption": data_path("charades", "TextData", "charadesval.caption.txt"),
         "query_feat": data_path("charades", "TextData", "clip_ViT_B_32_charades_query_feat.hdf5"),
-        "video_feat": data_path("charades", "FeatureData", "i3d_rgb_lgi", "new_clip_vit_32_charades_vid_features.hdf5"),
+        "video_feat": data_path("charades", "FeatureData", "new_clip_vit_32_charades_vid_features.hdf5"),
         "frame_root": data_path("charades", "raw_frames"),
-        "sampled_frame_root": data_path("charades", "raw_frames"),
+        "sampled_frame_root": data_path("charades", "verification_frames"),
+        "frame_source": "paths",
     },
     "msrvtt": {
         "annotation": data_path("msrvtt", "MSRVTT_data.videos.jsonl"),
@@ -97,7 +101,8 @@ DATASET_DEFAULTS: Dict[str, Dict[str, Optional[str]]] = {
         "query_feat": data_path("msrvtt", "TextData", "clip_ViT_B_32_msrvtt_query_feat.hdf5"),
         "video_feat": data_path("msrvtt", "FeatureData", "new_clip_vit_32_msrvtt_vid_features.hdf5"),
         "frame_root": data_path("msrvtt", "raw_frames"),
-        "sampled_frame_root": data_path("msrvtt", "raw_frames"),
+        "sampled_frame_root": data_path("msrvtt", "verification_frames"),
+        "frame_source": "paths",
     },
 }
 
@@ -948,6 +953,31 @@ def indices_to_paths(files: Sequence[str], indices: Sequence[int]) -> List[Optio
     return out
 
 
+def copy_indexed_frames_to_root(
+    files: Sequence[str],
+    indices: Sequence[int],
+    sampled_frame_root: Optional[str],
+    video_id: str,
+    overwrite: bool,
+) -> List[Optional[str]]:
+    source_paths = indices_to_paths(files, indices)
+    if sampled_frame_root is None:
+        return source_paths
+
+    out_dir = os.path.join(sampled_frame_root, slugify(video_id))
+    out_paths: List[Optional[str]] = []
+    for source_path in source_paths:
+        if source_path is None:
+            out_paths.append(None)
+            continue
+        out_path = os.path.join(out_dir, Path(source_path).name)
+        if overwrite or not os.path.exists(out_path):
+            os.makedirs(out_dir, exist_ok=True)
+            shutil.copy2(source_path, out_path)
+        out_paths.append(out_path)
+    return out_paths
+
+
 def extract_frame(video_path: str, time_sec: float, output_path: str, overwrite: bool = False) -> None:
     if os.path.exists(output_path) and not overwrite:
         return
@@ -1203,9 +1233,21 @@ def build_candidate_records_for_query(
                 record.update(
                     {
                         "gt_frame_indices": gt_frame_indices,
-                        "gt_frame_paths": indices_to_paths(gt_files, gt_frame_indices),
+                        "gt_frame_paths": copy_indexed_frames_to_root(
+                            gt_files,
+                            gt_frame_indices,
+                            args.sampled_frame_root,
+                            gt_video_id,
+                            args.overwrite_sampled_frames,
+                        ),
                         "pseudo_frame_indices": pseudo_frame_indices,
-                        "pseudo_frame_paths": indices_to_paths(pseudo_files, pseudo_frame_indices),
+                        "pseudo_frame_paths": copy_indexed_frames_to_root(
+                            pseudo_files,
+                            pseudo_frame_indices,
+                            args.sampled_frame_root,
+                            pseudo_video_id,
+                            args.overwrite_sampled_frames,
+                        ),
                     }
                 )
             else:
@@ -1218,10 +1260,22 @@ def build_candidate_records_for_query(
                 record.update(
                     {
                         "gt_frame_indices": gt_frame_indices,
-                        "gt_frame_paths": indices_to_paths(gt_files, gt_frame_indices),
+                        "gt_frame_paths": copy_indexed_frames_to_root(
+                            gt_files,
+                            gt_frame_indices,
+                            args.sampled_frame_root,
+                            gt_video_id,
+                            args.overwrite_sampled_frames,
+                        ),
                         "pseudo_center_frame_index": pseudo_center_idx,
                         "pseudo_frame_indices": pseudo_frame_indices,
-                        "pseudo_frame_paths": indices_to_paths(pseudo_files, pseudo_frame_indices),
+                        "pseudo_frame_paths": copy_indexed_frames_to_root(
+                            pseudo_files,
+                            pseudo_frame_indices,
+                            args.sampled_frame_root,
+                            pseudo_video_id,
+                            args.overwrite_sampled_frames,
+                        ),
                     }
                 )
         else:
@@ -1307,6 +1361,8 @@ def apply_dataset_defaults(args: argparse.Namespace) -> None:
         args.frame_root = defaults["frame_root"]
     if args.sampled_frame_root is None:
         args.sampled_frame_root = defaults["sampled_frame_root"]
+    if args.frame_source is None:
+        args.frame_source = defaults["frame_source"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -1330,7 +1386,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--frame-source",
         choices=["frames", "videos", "paths"],
-        default="frames",
+        default=None,
         help="frames: use existing frame dirs; videos: extract frames from raw videos; paths: write planned paths only.",
     )
     parser.add_argument("--overwrite-sampled-frames", action="store_true")

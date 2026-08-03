@@ -24,6 +24,7 @@ all_prvr/ICML26-Holmes/Holmes_ICML/
 *.log
 
 # Generated experiment outputs
+outputs/
 experiments/recall_results/
 experiments/ann_benchmark/
 experiments/branch_ablation/

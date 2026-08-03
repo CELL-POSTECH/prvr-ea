@@ -106,6 +106,22 @@ Default `--topk` is `100`.
 
 ## 2. Prepare Frames
 
+Candidate mining writes verification frame paths under `verification_frames` so
+CLIP4Clip `raw_frames` stay unchanged. TVR verification frames are copied from
+the distributed raw frames during candidate mining. For ActivityNet, Charades,
+and MSR-VTT, materialize the listed timestamps from raw videos before running
+Qwen verification.
+
+```bash
+DATASET=<activitynet|charades|msrvtt>
+
+python llm-verification/materialize_candidate_frames.py \
+  --dataset "$DATASET" \
+  --input outputs/upstream/pseudo_gt_candidates."$DATASET".jsonl \
+  --video-root "$PRVR_DATA_ROOT/${DATASET}/raw_videos" \
+  --workers 24
+```
+
 Check frame paths before running Qwen:
 
 ```bash
@@ -114,33 +130,18 @@ DATASET=<activitynet|tvr|charades|msrvtt>
 python llm-verification/sanity_check_candidate_frames.py \
   --dataset "$DATASET" \
   --input outputs/upstream/pseudo_gt_candidates."$DATASET".jsonl \
-  --caption-file datasets/"$DATASET"/TextData/"$DATASET"val.caption.txt \
+  --caption-file "$PRVR_DATA_ROOT/${DATASET}/TextData/${DATASET}val.caption.txt" \
   --workers 32 \
   --fail-on-issue
 ```
 
-If candidate rows contain frame timestamps instead of existing images,
-materialize them from raw videos. This is normally needed only when the
-candidate JSONL was built with frame timestamps instead of ready-to-read frame
-paths.
-
-```bash
-DATASET=<activitynet|charades>
-
-python llm-verification/materialize_candidate_frames.py \
-  --dataset "$DATASET" \
-  --input outputs/upstream/pseudo_gt_candidates."$DATASET".jsonl \
-  --video-root datasets/"$DATASET"/raw_videos \
-  --workers 24
-```
-
-Expected raw-frame roots:
+Expected verification-frame roots:
 
 ```text
-activitynet: datasets/activitynet/raw_frames/<video_id>/*.jpg
-tvr:         datasets/tvr/raw_frames/frames_hq/<show>_frames/<video_id>/*.jpg
-charades:    datasets/charades/raw_frames/<video_id>/*.jpg
-msrvtt:      datasets/msrvtt/raw_frames/<video_id>/*.jpg
+activitynet: $PRVR_DATA_ROOT/activitynet/verification_frames/<video_id>/*.jpg
+tvr:         $PRVR_DATA_ROOT/tvr/verification_frames/<video_id>/*.jpg
+charades:    $PRVR_DATA_ROOT/charades/verification_frames/<video_id>/*.jpg
+msrvtt:      $PRVR_DATA_ROOT/msrvtt/verification_frames/<video_id>/*.jpg
 ```
 
 ## 3. Verify Candidates
@@ -177,7 +178,7 @@ DATASET=<activitynet|tvr|charades|msrvtt>
 python llm-verification/build_dense_caption.py \
   --dataset "$DATASET" \
   --split val \
-  --caption-file datasets/"$DATASET"/TextData/"$DATASET"val.caption.txt \
+  --caption-file "$PRVR_DATA_ROOT/${DATASET}/TextData/${DATASET}val.caption.txt" \
   --verification outputs/runs/"$DATASET"/verification.jsonl \
   --output outputs/runs/"$DATASET"/"$DATASET"denseval.caption.txt \
   --overwrite

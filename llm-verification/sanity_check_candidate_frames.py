@@ -14,11 +14,12 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 DATASETS = ("tvr", "activitynet", "charades", "msrvtt")
+DATA_ROOT = Path(os.environ.get("PRVR_DATA_ROOT", "datasets"))
 DEFAULT_CAPTION_FILES = {
-    "tvr": "tvrval.caption.txt",
-    "activitynet": "datasets/activitynet/activitynetval.caption.txt",
-    "charades": "datasets/charades/charadesval.caption.txt",
-    "msrvtt": None,
+    "tvr": str(DATA_ROOT / "tvr" / "TextData" / "tvrval.caption.txt"),
+    "activitynet": str(DATA_ROOT / "activitynet" / "TextData" / "activitynetval.caption.txt"),
+    "charades": str(DATA_ROOT / "charades" / "TextData" / "charadesval.caption.txt"),
+    "msrvtt": str(DATA_ROOT / "msrvtt" / "TextData" / "msrvttval.caption.txt"),
 }
 FRAME_PATH_KEYS = ("gt_frame_paths", "pseudo_frame_paths", "candidate_frame_paths")
 GT_VIDEO_KEYS = ("original_gt_video_id", "gt_video_id", "query_gt_video_id")

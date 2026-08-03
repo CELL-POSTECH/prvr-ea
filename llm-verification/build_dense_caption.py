@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 ACCEPT_VALUES = {"accept", "accepted", "true", "1", "yes"}
+DATA_ROOT = Path(os.environ.get("PRVR_DATA_ROOT", "datasets"))
 
 
 def existing_path(candidates: Sequence[Path]) -> Optional[Path]:
@@ -38,6 +40,9 @@ def default_caption_candidates(dataset: str, split: str) -> List[Path]:
         Path(filename),
         Path("data") / filename,
         Path("datasets") / dataset / filename,
+        DATA_ROOT / dataset / filename,
+        Path("datasets") / dataset / "TextData" / filename,
+        DATA_ROOT / dataset / "TextData" / filename,
     ]
 
 

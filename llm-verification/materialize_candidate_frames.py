@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Materialize candidate frame images listed in a pseudo-GT JSONL.
 
-ActivityNet and Charades candidates built with frame-source=paths contain frame
-timestamps and output paths, but no image files yet. Run this on the GPU/server
-that has the raw mp4 files before running Qwen verification.
+Candidates built with frame-source=paths contain frame timestamps and output
+paths, but no image files yet. Run this on the GPU/server that has the raw mp4
+files before running Qwen verification.
 
 Example:
-    python qwen/materialize_candidate_frames.py \
+    python llm-verification/materialize_candidate_frames.py \
       --dataset activitynet \
       --video-root /data/activitynet/val \
       --workers 8
@@ -27,7 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from tqdm import tqdm
 
-DATASETS = ("tvr", "activitynet", "charades")
+DATASETS = ("activitynet", "charades", "msrvtt")
 VIDEO_STREAM_CACHE: Dict[str, Optional[Tuple[float, Optional[float]]]] = {}
 VIDEO_STREAM_CACHE_LOCK = Lock()
 
