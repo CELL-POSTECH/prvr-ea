@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-DATASETS = ("tvr", "activitynet", "msrvtt")
+DATASETS = ("tvr", "activitynet", "charades", "msrvtt")
 DEFAULT_CAPTION_FILES = {
     "tvr": "tvrval.caption.txt",
     "activitynet": "datasets/activitynet/activitynetval.caption.txt",
+    "charades": "datasets/charades/charadesval.caption.txt",
     "msrvtt": None,
 }
 FRAME_PATH_KEYS = ("gt_frame_paths", "pseudo_frame_paths", "candidate_frame_paths")

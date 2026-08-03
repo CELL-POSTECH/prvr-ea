@@ -44,6 +44,18 @@ def dataset_from_cli(name):
     return aliases[base], feature_mode
 
 
+def frame_index_feature_for(collection, feature_mode):
+    if feature_mode != "clip":
+        return None
+    clip_frame_maps = {
+        "activitynet": "i3d",
+        "tvr": "i3d_resnet",
+        "charades": "i3d_rgb_lgi",
+        "msrvtt": MSRVTT_RESNET_FEATURE,
+    }
+    return clip_frame_maps[collection]
+
+
 def configure_cfg(cfg, cli_name, project_root):
     """Apply local paths and feature selection to config-dict based projects."""
     collection, feature_mode = dataset_from_cli(cli_name)
@@ -60,16 +72,9 @@ def configure_cfg(cfg, cli_name, project_root):
     }
     cfg["visual_feature"] = "clip" if feature_mode == "clip" else \
         legacy_visual_features[collection]
-    # MSRVTT's `FeatureData/clip/video2frames.txt` stores one video key per
-    # item, not temporal frame ids.  Reuse the ResNet temporal index map when
-    # sampling CLIP's per-video sequence.
-    clip_frame_maps = {
-        "activitynet": "i3d",
-        "tvr": "i3d_resnet",
-        "charades": "i3d_rgb_lgi",
-        "msrvtt": MSRVTT_RESNET_FEATURE,
-    }
-    cfg["frame_index_feature"] = clip_frame_maps[collection] \
+    # CLIP HDF5 stores per-video sequences, but the PRVR loaders still need the
+    # original frame index map to preserve each dataset's temporal ordering.
+    cfg["frame_index_feature"] = frame_index_feature_for(collection, feature_mode) \
         if feature_mode == "clip" else cfg["visual_feature"]
     if feature_mode == "clip":
         # Supplied CLIP ViT-B/32 video and text embeddings are 512-D.
@@ -156,8 +161,9 @@ class H5FrameFeature:
 def visual_paths(root, collection, feature_mode, visual_feature):
     """Return (visual reader/path, video2frames path) for legacy loaders."""
     feature_root = os.path.join(root, collection, "FeatureData")
-    frame_map = os.path.join(feature_root, visual_feature if feature_mode != "clip" else "i3d",
-                             "video2frames.txt")
+    frame_index_feature = frame_index_feature_for(collection, feature_mode) \
+        if feature_mode == "clip" else visual_feature
+    frame_map = os.path.join(feature_root, frame_index_feature, "video2frames.txt")
     if feature_mode == "clip":
         return H5FrameFeature(os.path.join(
             feature_root, "new_clip_vit_32_%s_vid_features.hdf5" % collection)), frame_map

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Materialize candidate frame images listed in a pseudo-GT JSONL.
 
-ActivityNet candidates built with frame-source=paths contain frame timestamps and
-output paths, but no image files yet. Run this on the GPU/server that has the raw
-mp4 files before running Qwen verification.
+ActivityNet and Charades candidates built with frame-source=paths contain frame
+timestamps and output paths, but no image files yet. Run this on the GPU/server
+that has the raw mp4 files before running Qwen verification.
 
 Example:
     python qwen/materialize_candidate_frames.py \

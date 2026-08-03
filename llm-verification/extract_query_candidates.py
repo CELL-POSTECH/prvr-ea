@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable
 
 
-DATASETS = ("tvr", "activitynet", "msrvtt")
+DATASETS = ("tvr", "activitynet", "charades", "msrvtt")
 DEFAULT_OUTPUT = "outputs/runs/query_subset/candidates.jsonl"
 
 
