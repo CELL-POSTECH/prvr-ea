@@ -104,69 +104,6 @@ The script writes per-method top-k rankings, computes pure CLIP frame-level
 top-k, and keeps videos that appear in all PRVR rankings and pure CLIP top-k.
 Default `--topk` is `100`.
 
-The output is JSONL, one candidate pair per line:
-
-```json
-{
-  "dataset": "activitynet",
-  "query_key": "v_uqiMw7tQ1Cc#enc#0",
-  "desc_id": "0",
-  "query": "A weight lifting tutorial is given.",
-  "type": "v",
-  "original_gt_video_id": "v_uqiMw7tQ1Cc",
-  "pseudo_video_id": "v_-01K1HxqPB8",
-  "gt_ts": [0.28, 55.15],
-  "gt_duration": 55.15,
-  "pseudo_clip_feature_index": 286,
-  "pseudo_clip_feature_len": 404,
-  "gt_frame_times": [0.28, 8.118571428571428, 15.957142857142856, 23.795714285714286, 31.634285714285713, 39.472857142857144, 47.31142857142857, 55.15],
-  "gt_frame_paths": [
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000000280.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000008119.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000015957.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000023796.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000031634.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000039473.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000047311.jpg",
-    "<data_root>/activitynet/raw_frames/v_uqiMw7tQ1Cc/0000055150.jpg"
-  ],
-  "pseudo_center_time": 153.08451612903227,
-  "pseudo_window_mode": "gt_clamped",
-  "pseudo_window_sec": 20.0,
-  "pseudo_frame_times": [143.08451612903227, 145.94165898617513, 148.798801843318, 151.65594470046085, 154.51308755760368, 157.37023041474654, 160.2273732718894, 163.08451612903227],
-  "pseudo_frame_paths": [
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000143085.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000145942.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000148799.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000151656.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000154513.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000157370.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000160227.jpg",
-    "<data_root>/activitynet/raw_frames/v_-01K1HxqPB8/0000163085.jpg"
-  ],
-  "model_agreement": {
-    "DreamPRVR": {"rank": 66, "score": 0.3960685133934021},
-    "GMMFormerv2": {"rank": 75, "score": 0.3711954951286316},
-    "HLFormer": {"rank": 60, "score": 0.3807704746723175},
-    "Holmes": {"rank": 58, "score": 0.4048531651496887},
-    "pure_clip": {"rank": 52, "score": 0.3037784993648529, "clip_feature_index": 286}
-  }
-}
-```
-
-Use `extract_query_candidates.py` only to create a small subset from an existing
-candidate JSONL:
-
-```bash
-DATASET=<activitynet|tvr|charades|msrvtt>
-
-python llm-verification/extract_query_candidates.py \
-  --dataset "$DATASET" \
-  --input outputs/upstream/pseudo_gt_candidates."$DATASET".jsonl \
-  --query-key <query_id> \
-  --output outputs/runs/query_subset/candidates.jsonl
-```
-
 ## 2. Prepare Frames
 
 Check frame paths before running Qwen:
