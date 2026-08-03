@@ -66,6 +66,7 @@ MSR-VTT must provide `FeatureData/resnext101-resnet152/` at the shown path.
 | TVR / TVQA videos | [TVQA download page](https://nlp.cs.unc.edu/data/jielei/tvqa/tvqa_public_html/download_tvqa.html) | Raw-frame extraction for CLIP4Clip; follow TVQA access terms. |
 | Charades videos | [Charades_v1.zip](https://ai2-public-datasets.s3.amazonaws.com/charades/Charades_v1.zip) | Raw-frame extraction for CLIP4Clip. |
 | MSR-VTT videos | [MSRVTT.zip](https://www.robots.ox.ac.uk/~maxbain/frozen-in-time/data/MSRVTT.zip) | Raw-frame extraction for CLIP4Clip. |
+| MSR-VTT ResNet features | [Hybrid Space MSRVTT10K](https://github.com/danieljf24/hybrid_space#dual-encoding-on-msrvtt10k) | `FeatureData/resnext101-resnet152/{feature.bin,id.txt,shape.txt,video2frames.txt}`. |
 | MSR-VTT metadata | [msrvtt_data.zip](https://github.com/ArrowLuo/CLIP4Clip/releases/download/v0.0/msrvtt_data.zip) | CLIP4Clip metadata. |
 | Verified dense multi-GT labels | [multigt_labels.zip](multigt_labels.zip) | Custom PRVR-candidate + Qwen3-VL verification output for dense evaluation. |
 

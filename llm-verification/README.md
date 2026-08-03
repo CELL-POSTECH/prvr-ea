@@ -6,7 +6,7 @@ multi-GT labels for PRVR evaluation.
 Supported datasets:
 
 ```text
-<activitynet|tvr|charades>
+<activitynet|tvr|charades|msrvtt>
 ```
 
 Run commands from the repository root unless noted.
@@ -100,16 +100,6 @@ PRVR_DATA_ROOT=<data_root> python llm-verification/build_pseudo_gt_from_ckpts.py
   --gpu 0
 ```
 
-`<adapter>` selects the model-code adapter used to run the checkpoint:
-
-```text
-dreamprvr
-ms-sl
-gmmformer
-hlformer
-holmes
-```
-
 The script writes per-method top-k rankings, computes pure CLIP frame-level
 top-k, and keeps videos that appear in all PRVR rankings and pure CLIP top-k.
 Default `--topk` is `100`.
@@ -168,7 +158,7 @@ Use `extract_query_candidates.py` only to create a small subset from an existing
 candidate JSONL:
 
 ```bash
-DATASET=<activitynet|tvr|charades>
+DATASET=<activitynet|tvr|charades|msrvtt>
 
 python llm-verification/extract_query_candidates.py \
   --dataset "$DATASET" \
@@ -182,7 +172,7 @@ python llm-verification/extract_query_candidates.py \
 Check frame paths before running Qwen:
 
 ```bash
-DATASET=<activitynet|tvr|charades>
+DATASET=<activitynet|tvr|charades|msrvtt>
 
 python llm-verification/sanity_check_candidate_frames.py \
   --dataset "$DATASET" \
@@ -193,10 +183,12 @@ python llm-verification/sanity_check_candidate_frames.py \
 ```
 
 If candidate rows contain frame timestamps instead of existing images,
-materialize them from raw videos:
+materialize them from raw videos. This is normally needed only when the
+candidate JSONL was built with frame timestamps instead of ready-to-read frame
+paths.
 
 ```bash
-DATASET=<activitynet|tvr|charades>
+DATASET=<activitynet|charades>
 
 python llm-verification/materialize_candidate_frames.py \
   --dataset "$DATASET" \
@@ -211,6 +203,7 @@ Expected raw-frame roots:
 activitynet: datasets/activitynet/raw_frames/<video_id>/*.jpg
 tvr:         datasets/tvr/raw_frames/frames_hq/<show>_frames/<video_id>/*.jpg
 charades:    datasets/charades/raw_frames/<video_id>/*.jpg
+msrvtt:      datasets/msrvtt/raw_frames/<video_id>/*.jpg
 ```
 
 ## 3. Verify Candidates
@@ -218,7 +211,7 @@ charades:    datasets/charades/raw_frames/<video_id>/*.jpg
 Run Qwen3-VL verification:
 
 ```bash
-DATASET=<activitynet|tvr|charades>
+DATASET=<activitynet|tvr|charades|msrvtt>
 
 python llm-verification/verify_pseudo_gt_with_qwen.py \
   --dataset "$DATASET" \
@@ -242,7 +235,7 @@ Useful options:
 Append accepted candidates to the validation caption file:
 
 ```bash
-DATASET=<activitynet|tvr|charades>
+DATASET=<activitynet|tvr|charades|msrvtt>
 
 python llm-verification/build_dense_caption.py \
   --dataset "$DATASET" \
