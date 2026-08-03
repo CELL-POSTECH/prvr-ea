@@ -146,8 +146,15 @@ python datasets/extract_raw_frames.py \
   --workers 8
 ```
 
-The default extraction rate is `1.5` fps, matching the prepared CLIP-B/32 video
-feature lengths used by candidate mining. Output frame names are sequential:
-`000001.jpg`, `000002.jpg`, ...
+Default extraction rates are dataset-specific and follow the prepared CLIP-B/32
+video feature lengths used by candidate mining:
+
+```text
+activitynet: 1.875 fps
+charades:    3.0 fps
+msrvtt:      1.5 fps
+```
+
+Output frame names are sequential: `000001.jpg`, `000002.jpg`, ...
 
 The frame loader samples up to the configured `--max_frames` from each video.

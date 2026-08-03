@@ -24,6 +24,11 @@ DATASETS = ("activitynet", "charades", "msrvtt")
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".webm", ".avi", ".mov")
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_ROOT = Path(os.environ.get("PRVR_DATA_ROOT", REPO_ROOT / "datasets"))
+DEFAULT_FPS = {
+    "activitynet": 1.875,
+    "charades": 3.0,
+    "msrvtt": 1.5,
+}
 
 
 def parse_frame_rate(rate: Optional[str]) -> Optional[float]:
@@ -231,8 +236,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fps",
         type=float,
-        default=1.5,
-        help="Target extraction FPS. 1.5 matches the prepared CLIP-B/32 video feature lengths.",
+        default=None,
+        help="Target extraction FPS. Defaults are dataset-specific.",
     )
     parser.add_argument(
         "--short-side",
@@ -253,6 +258,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.fps is None:
+        args.fps = DEFAULT_FPS[args.dataset]
 
     if args.fps <= 0:
         raise ValueError("--fps must be positive")
