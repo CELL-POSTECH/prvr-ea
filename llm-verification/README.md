@@ -75,22 +75,22 @@ Train four PRVR models in your environment, then pass their checkpoint paths to
 the candidate miner. The miner also runs CLIP frame-level retrieval.
 
 For the local batch script, edit checkpoint paths at the top of
-`scripts/run_candidate_mining.sh`, then run:
+`llm-verification/run_candidate_mining.sh`, then run:
 
 ```bash
-bash scripts/run_candidate_mining.sh all --gpu 0
+bash llm-verification/run_candidate_mining.sh all --gpu 0
 ```
 
 Run one dataset only:
 
 ```bash
-bash scripts/run_candidate_mining.sh activitynet --gpu 0
+bash llm-verification/run_candidate_mining.sh activitynet --gpu 0
 ```
 
 Manual command format:
 
 ```bash
-PRVR_DATA_ROOT=<data_root> python scripts/build_pseudo_gt_from_ckpts.py \
+PRVR_DATA_ROOT=<data_root> python llm-verification/build_pseudo_gt_from_ckpts.py \
   --dataset activitynet \
   --prvr-model DreamPRVR=dreamprvr=<repo_root>/all_prvr/CVPR26-DreamPRVR/results/clip/activitynet/DreamPRVR/best.ckpt \
   --prvr-model GMMFormerv2=gmmformer=<repo_root>/all_prvr/GMMFormer_v2/results/clip/activitynet/gmmformer_v2/best.ckpt \

@@ -39,7 +39,7 @@ case "$DATASET_ARG" in
   all|activitynet|tvr|charades|msrvtt)
     ;;
   *)
-    echo "Usage: bash scripts/run_candidate_mining.sh [all|activitynet|act|tvr|charades|msrvtt] [--dry-run] [--gpu N]" >&2
+    echo "Usage: bash llm-verification/run_candidate_mining.sh [all|activitynet|act|tvr|charades|msrvtt] [--dry-run] [--gpu N]" >&2
     exit 1
     ;;
 esac
@@ -97,7 +97,7 @@ run_candidates() {
   require_file "${HOLMES_CKPTS[$dataset]}"
 
   local cmd=(
-    "$PYTHON_BIN" "${ROOT}/scripts/build_pseudo_gt_from_ckpts.py"
+    "$PYTHON_BIN" "${ROOT}/llm-verification/build_pseudo_gt_from_ckpts.py"
     --dataset "$dataset"
     --prvr-model "DreamPRVR=dreamprvr=${DREAMPRVR_CKPTS[$dataset]}"
     --prvr-model "GMMFormerv2=gmmformer=${GMMFORMER_CKPTS[$dataset]}"

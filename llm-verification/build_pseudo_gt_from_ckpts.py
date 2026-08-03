@@ -7,7 +7,7 @@ This is a one-command wrapper around:
   3. PRVR+CLIP top-k agreement candidate construction
 
 Generic example:
-    conda run -n prvr python scripts/build_pseudo_gt_from_ckpts.py \
+    conda run -n prvr python llm-verification/build_pseudo_gt_from_ckpts.py \
       --dataset activitynet \
       --prvr-model method_a=dreamprvr=/path/to/method_a.ckpt \
       --prvr-model method_b=gmmformer=/path/to/method_b.ckpt \
@@ -861,7 +861,7 @@ def main() -> None:
     candidate_cmd = [
         sys.executable,
         "-u",
-        str(REPO_ROOT / "scripts/build_pseudo_gt_candidates.py"),
+        str(REPO_ROOT / "llm-verification/build_pseudo_gt_candidates.py"),
         "--dataset",
         args.dataset,
         "--split",

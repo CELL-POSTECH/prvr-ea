@@ -6,7 +6,7 @@ outputs and a pure CLIP max-frame-similarity ranker. TVR remains the default
 configuration. ActivityNet and Charades can be selected with ``--dataset``.
 
 TVR example:
-    conda run -n prvr python scripts/build_pseudo_gt_candidates.py \
+    conda run -n prvr python llm-verification/build_pseudo_gt_candidates.py \
       --ms-sl-rank outputs/tvr_rankings_from_ckpts/ms_sl_top100.jsonl \
       --gmmformer-rank outputs/tvr_rankings_from_ckpts/gmmformer_v2_top100.jsonl \
       --hlformer-rank outputs/tvr_rankings_from_ckpts/hlformer_top100.jsonl \
@@ -15,7 +15,7 @@ TVR example:
       --output outputs/upstream/pseudo_gt_candidates.tvr.jsonl
 
 ActivityNet example with local raw videos:
-    conda run -n prvr python scripts/build_pseudo_gt_candidates.py \
+    conda run -n prvr python llm-verification/build_pseudo_gt_candidates.py \
       --dataset activitynet \
       --ms-sl-rank outputs/activitynet_rankings_from_ckpts/ms_sl_top100.jsonl \
       --gmmformer-rank outputs/activitynet_rankings_from_ckpts/gmmformer_v2_top100.jsonl \
@@ -28,7 +28,7 @@ ActivityNet example with local raw videos:
       --output outputs/upstream/pseudo_gt_candidates.activitynet.jsonl
 
 Generic rank inputs:
-    conda run -n prvr python scripts/build_pseudo_gt_candidates.py \
+    conda run -n prvr python llm-verification/build_pseudo_gt_candidates.py \
       --dataset activitynet \
       --model-rank method_a=outputs/ranks/method_a_top100.jsonl \
       --model-rank method_b=outputs/ranks/method_b_top100.jsonl \
