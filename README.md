@@ -65,6 +65,8 @@ bash experiments/scripts/train_clip.sh act 0 GMMFormer-v2
 
 Checkpoints are written below `all_prvr/<model>/results/<feature>/<dataset>/`.
 
+Note: If you encounter any issues during training, please refer to original repo. 
+
 ## Eval
 
 Evaluate standard single-GT recall from trained checkpoints. Results contain

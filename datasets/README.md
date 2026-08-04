@@ -140,8 +140,8 @@ CLIP4Clip PRVR evaluation. For ActivityNet and Charades, sample raw videos at 3
 fps and resize the shorter side to 224 pixels:
 
 ```text
-activitynet: 3 fps, short side 224
-charades:    3 fps, short side 224
+activitynet: 1.5 fps
+charades:    1.5 fps
 ```
 
 LLM verification candidate mining uses CLIP video features for retrieval. It
